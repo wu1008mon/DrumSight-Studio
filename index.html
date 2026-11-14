@@ -1,0 +1,2441 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DrumSight Studio — 電子鼓五線譜節奏練習器</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #0b0f19;
+      color: #f1f5f9;
+      user-select: none;
+      overflow-x: hidden;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* 鼓墊打擊發光動畫 */
+    .pad-active {
+      transform: scale(0.95);
+      filter: brightness(1.45);
+      box-shadow: 0 0 24px currentColor;
+    }
+    /* 自訂捲軸 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between bg-slate-950 text-slate-100">
+
+  <!-- 頂部控制列與 MIDI 狀態 -->
+  <header class="bg-slate-900/90 border-b border-slate-800 px-4 py-3 backdrop-blur-md sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- 品牌標題 -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+            DrumSight Studio
+            <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">五線譜實戰版</span>
+          </h1>
+          <p class="text-xs text-slate-400">支援實體電子鼓 / MIDI 鍵盤 / .mid 樂譜匯入</p>
+        </div>
+      </div>
+
+      <!-- MIDI 裝置狀態與設定按鈕 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <div id="midi-status-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/90 border border-slate-700 text-xs">
+          <span id="midi-dot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="midi-status-text" class="text-slate-300 font-medium">偵測 MIDI 裝置中...</span>
+        </div>
+
+        <button id="btn-rescan-midi" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-emerald-300 transition flex items-center gap-1" title="插入 MIDI 鍵盤後點擊重新掃描">
+          <span>🔄 重新掃描</span>
+        </button>
+
+        <button id="btn-midi-learn" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-cyan-300 transition flex items-center gap-1.5" title="自訂 MIDI 鍵位對應">
+          <span>🎹 鍵位設定</span>
+        </button>
+
+        <button id="btn-export-html" class="px-3 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-xs font-medium text-indigo-200 transition flex items-center gap-1.5" title="若預覽視窗受限於瀏覽器沙盒權限，可下載至本機以 Chrome 直接開啟獲得完整 MIDI 權限">
+          <span>⬇️ 下載單機版</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主工作區 -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-4 flex flex-col gap-4">
+
+    <!-- 曲目選擇、匯入 MIDI 與播放控制列 -->
+    <section class="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 shadow-xl flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- 曲目與檔案匯入 -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <select id="song-select" class="bg-slate-800 border border-slate-700 text-slate-100 text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500">
+          <option value="rock8">曲目 1：基礎八分音符搖滾 (8-Beat Rock)</option>
+          <option value="funk">曲目 2：放克切分與小鼓鬼音 (Funk Groove)</option>
+          <option value="fill">曲目 3：十六分音符過門與碎音鈸 (Fill & Crash)</option>
+        </select>
+
+        <label class="cursor-pointer px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium text-slate-200 transition flex items-center gap-2">
+          <span>📂 匯入 .mid 檔</span>
+          <input type="file" id="midi-file-input" accept=".mid,.midi" class="hidden" />
+        </label>
+      </div>
+
+      <!-- 播放控制按鈕 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- 練習模式 vs 表演模式切換 -->
+        <div class="flex items-center bg-slate-950/90 p-1 rounded-xl border border-slate-700">
+          <button id="btn-mode-practice" class="px-3 py-1.5 rounded-lg bg-cyan-600 text-white font-bold text-xs transition shadow" title="必須完整打對當前時間點的所有音符，樂譜才會前進">
+            🎓 練習模式 (等打對)
+          </button>
+          <button id="btn-mode-perform" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white font-semibold text-xs transition" title="隨節拍器即時滾動演奏並計算準確率">
+            🎸 表演模式 (即時)
+          </button>
+        </div>
+        <button id="btn-play" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-600/20 transition flex items-center gap-2" title="快捷鍵：空白鍵 (Space)">
+          <span id="play-icon">▶</span>
+          <span id="play-text">開始練習</span>
+          <span class="mono text-[11px] px-1.5 py-0.5 rounded bg-black/25 text-white/90">Space</span>
+        </button>
+
+        <button id="btn-restart" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm font-medium transition">
+          ⏮ 重頭開始
+        </button>
+
+        <button id="btn-loop" class="px-3.5 py-2 rounded-xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition" data-active="true">
+          🔁 循環：開
+        </button>
+
+        <button id="btn-metronome" class="px-3.5 py-2 rounded-xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition" data-active="true">
+          ⏱️ 節拍器：開
+        </button>
+      </div>
+
+      <!-- 速度 (BPM) 調整 -->
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-2.5 bg-slate-800/70 px-3.5 py-1.5 rounded-xl border border-slate-700/80">
+          <span class="text-xs text-slate-400 font-medium">速度</span>
+          <input type="range" id="bpm-slider" min="50" max="130" value="100" class="w-20 sm:w-24 accent-indigo-500 cursor-pointer" />
+          <span id="bpm-display" class="mono text-xs sm:text-sm font-bold text-cyan-400 w-24 text-right">100% (100)</span>
+        </div>
+
+        <!-- 錄音室空間感 (Room Ambience) 調整 -->
+        <div class="flex items-center gap-2.5 bg-slate-800/70 px-3.5 py-1.5 rounded-xl border border-slate-700/80" title="調整原聲錄音室房間麥克風 (Room Mic) 殘響比例">
+          <span class="text-xs text-amber-300/90 font-medium">🎙️ 空間感</span>
+          <input type="range" id="room-slider" min="0" max="100" value="45" class="w-16 sm:w-20 accent-amber-400 cursor-pointer" />
+          <span id="room-display" class="mono text-xs font-bold text-amber-300 w-9 text-right">45%</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 即時數據儀表板 -->
+    <section class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+        <span class="text-xs text-slate-400">連擊數 (COMBO)</span>
+        <span id="stat-combo" class="mono text-2xl font-extrabold text-cyan-400">0</span>
+      </div>
+      <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+        <span class="text-xs text-slate-400">準確率 (ACCURACY)</span>
+        <span id="stat-accuracy" class="mono text-2xl font-extrabold text-emerald-400">100%</span>
+      </div>
+      <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+        <span class="text-xs text-slate-400">完美 / 良好 / 失誤</span>
+        <span id="stat-breakdown" class="mono text-sm font-bold text-slate-200">0 / 0 / 0</span>
+      </div>
+      <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+        <span class="text-xs text-slate-400">最近 MIDI 訊號</span>
+        <span id="stat-last-midi" class="mono text-xs font-semibold text-amber-300 truncate max-w-[140px]">等待輸入...</span>
+      </div>
+    </section>
+
+    <!-- 五線譜即時捲動畫布區 -->
+    <section class="relative bg-[#f8fafc] rounded-2xl border-2 border-slate-700 shadow-2xl overflow-hidden">
+      <!-- 頂部圖例提示 -->
+      <div class="bg-slate-200/90 border-b border-slate-300 px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700 font-medium">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span class="font-bold text-slate-900">🎼 標準爵士鼓五線譜</span>
+          <span>上加二線 <b class="font-mono">×</b>：Crash</span>
+          <span>上加一線 <b class="font-mono">×</b>：Hi-Hat</span>
+          <span>第五線 <b class="font-mono">×</b>：Ride</span>
+          <span>第四間/第四線/第二間 <b class="font-mono">●</b>：高/中/落地鼓</span>
+          <span>第三間 <b class="font-mono">●</b>：Snare</span>
+          <span>第一間 <b class="font-mono">●</b>：Kick</span>
+        </div>
+
+        <!-- 五線譜間距縮放控制列 -->
+        <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1 bg-white/90 border border-slate-300 rounded-lg px-2 py-0.5 shadow-sm" title="可用滑鼠滾輪直接在五線譜上縮放拍距">
+            <span class="text-[11px] font-bold text-slate-600">🔍 譜面縮放</span>
+            <button id="btn-sheet-zoom-out" type="button" class="px-1.5 py-0.5 rounded hover:bg-slate-200 font-bold text-slate-800">－</button>
+            <input type="range" id="sheet-zoom-slider" min="50" max="260" value="100" class="w-16 sm:w-20 accent-indigo-600 cursor-pointer" />
+            <button id="btn-sheet-zoom-in" type="button" class="px-1.5 py-0.5 rounded hover:bg-slate-200 font-bold text-slate-800">＋</button>
+            <span id="sheet-zoom-display" class="mono text-[11px] font-bold text-indigo-700 w-9 text-right">100%</span>
+          </div>
+          <div id="song-title-banner" class="font-bold text-indigo-700">曲目 1：基礎八分音符搖滾 (100 BPM)</div>
+        </div>
+      </div>
+
+      <!-- Canvas 樂譜渲染畫布 -->
+      <div class="relative w-full h-[260px] sm:h-[290px]" id="canvas-container">
+        <canvas id="sheet-canvas" class="w-full h-full block"></canvas>
+      </div>
+
+      <!-- 全曲總覽時間軸與 A-B 循環區間控制列 -->
+      <div class="bg-slate-900 border-t border-slate-700 px-3.5 py-2.5 flex flex-col gap-2">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-bold text-cyan-300">🧭 全曲總覽時間軸</span>
+            <span class="text-slate-400 hidden md:inline">（滾輪可放大時間軸，拖曳可捲動瀏覽；Shift+拖曳框選 A-B 區間）</span>
+          </div>
+
+          <!-- 時間軸縮放 + A-B 循環區間設定控制項 -->
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700 text-slate-200" title="放大時間軸以便在長曲目中精準定位小節">
+              <span class="text-slate-400">🔍 時間軸:</span>
+              <button id="btn-tl-zoom-out" type="button" class="px-1.5 rounded bg-slate-700 hover:bg-slate-600 font-bold text-cyan-300">－</button>
+              <input type="range" id="tl-zoom-slider" min="100" max="800" value="100" class="w-16 sm:w-20 accent-cyan-400 cursor-pointer" />
+              <button id="btn-tl-zoom-in" type="button" class="px-1.5 rounded bg-slate-700 hover:bg-slate-600 font-bold text-cyan-300">＋</button>
+              <span id="tl-zoom-display" class="mono text-[11px] font-bold text-cyan-300 w-9 text-right">1.0x</span>
+            </div>
+
+            <button id="btn-ab-toggle" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 font-semibold transition" title="開啟或關閉指定小節區間循環">
+              🔁 A-B 區間循環：關
+            </button>
+            <div class="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700 text-slate-200">
+              <span class="text-slate-400">範圍:</span>
+              <select id="loop-start-select" class="bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 mono text-xs text-cyan-300 focus:outline-none"></select>
+              <span class="text-slate-400">至</span>
+              <select id="loop-end-select" class="bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 mono text-xs text-cyan-300 focus:outline-none"></select>
+            </div>
+            <button id="btn-ab-reset" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-white transition" title="重設為全曲範圍">
+              全曲
+            </button>
+          </div>
+        </div>
+
+        <!-- 互動式全曲縮圖時間軸畫布（支援放大與橫向捲動） -->
+        <div class="relative w-full h-14 rounded-xl bg-slate-950 border border-slate-700/90 overflow-x-auto overflow-y-hidden" id="timeline-scroll-wrapper">
+          <div class="relative h-full min-w-full" id="timeline-container">
+            <canvas id="timeline-canvas" class="w-full h-full block cursor-ew-resize"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 虛擬電子鼓墊 / MIDI 鍵盤對應區（可直接點擊或用電腦鍵盤測試） -->
+    <section class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+          <span>🥁 完整 9 件式標準爵士鼓組監控與測試墊</span>
+          <span class="text-xs font-normal text-slate-400">（可直接點擊鼓墊、敲擊 MIDI 鍵盤，或按電腦鍵盤測試）</span>
+        </h2>
+        <span class="text-xs text-cyan-400 font-medium">提示：MIDI 鍵盤請將八度調至 C2~D3 區間（中音Tom=C3 / 落地Tom=A2）</span>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5" id="drum-pads-grid">
+        <!-- 鼓墊由 JS 動態生成，確保鍵位映射與狀態完全同步 -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MIDI 鍵位自訂學習視窗 (Modal) -->
+  <div id="midi-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-5 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+        <h3 class="text-base font-bold text-white">🎹 MIDI 鍵位映射設定 (MIDI Learn)</h3>
+        <button id="btn-close-modal" class="text-slate-400 hover:text-white text-lg font-bold px-2">✕</button>
+      </div>
+      <p class="text-xs text-slate-400 mb-4">
+        如果你的 MIDI 鍵盤按鍵位置不順手，點擊右側「點擊學習」後，直接按下 MIDI 鍵盤上的任意琴鍵即可重新綁定！
+      </p>
+      <div id="midi-mapping-list" class="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+        <!-- 映射列表由 JS 生成 -->
+      </div>
+      <div class="mt-5 pt-3 border-t border-slate-800 flex justify-between">
+        <button id="btn-reset-map" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">恢復預設 GM 鼓組鍵位</button>
+        <button id="btn-save-modal" class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white">完成設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 提示訊息框 (取代 alert) -->
+  <div id="toast-box" class="fixed bottom-5 right-5 bg-slate-800 border border-indigo-500/50 text-white px-4 py-2.5 rounded-xl shadow-2xl text-sm font-medium opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
+
+  <script>
+    /**
+     * ============================================================================
+     * 1. 核心鼓組定義與 GM MIDI 鍵位映射表 (完整 9 件式標準 5 鼓 3 鈸配置)
+     * ============================================================================
+     */
+    const DRUM_PARTS = [
+      { id: 'kick',     name: '大鼓 (Kick)',         short: 'KICK',   defaultNote: 36, key: 'b', keyLabel: 'B 鍵',  staffStep: 1,  headType: 'normal', color: '#f43f5e' },
+      { id: 'snare',    name: '小鼓 (Snare)',        short: 'SNARE',  defaultNote: 38, key: 'f', keyLabel: 'F 鍵',  staffStep: 5,  headType: 'normal', color: '#38bdf8' },
+      { id: 'hihat',    name: '閉合踩鈸 (Hi-Hat)',   short: 'CHH',    defaultNote: 42, key: 'j', keyLabel: 'J 鍵',  staffStep: 9,  headType: 'x',      color: '#eab308' },
+      { id: 'openhh',   name: '開放踩鈸 (Open HH)',  short: 'OHH',    defaultNote: 46, key: 'k', keyLabel: 'K 鍵',  staffStep: 9,  headType: 'openx',  color: '#f97316' },
+      { id: 'ride',     name: '疊音鈸 (Ride)',       short: 'RIDE',   defaultNote: 51, key: 'u', keyLabel: 'U 鍵',  staffStep: 8,  headType: 'ride',   color: '#06b6d4' },
+      { id: 'crash',    name: '碎音鈸 (Crash)',      short: 'CRASH',  defaultNote: 49, key: 'r', keyLabel: 'R 鍵',  staffStep: 10, headType: 'crash',  color: '#10b981' },
+      { id: 'hightom',  name: '高音桶鼓 (High Tom)', short: 'HI-TOM', defaultNote: 50, key: 't', keyLabel: 'T 鍵',  staffStep: 7,  headType: 'normal', color: '#a855f7' },
+      { id: 'midtom',   name: '中音桶鼓 (Mid Tom)',  short: 'MID-TOM',defaultNote: 48, key: 'g', keyLabel: 'G 鍵',  staffStep: 6,  headType: 'normal', color: '#8b5cf6' },
+      { id: 'floortom', name: '落地鼓 (Floor Tom)',  short: 'FL-TOM', defaultNote: 45, key: 'h', keyLabel: 'H 鍵',  staffStep: 3,  headType: 'normal', color: '#ec4899' }
+    ];
+
+    let noteToDrumId = {};
+    let drumIdToNote = {};
+
+    function resetDrumMapping() {
+      noteToDrumId = {
+        35: 'kick', 36: 'kick',
+        38: 'snare', 40: 'snare', 37: 'snare',
+        42: 'hihat', 44: 'hihat',
+        46: 'openhh',
+        51: 'ride', 53: 'ride', 59: 'ride',
+        49: 'crash', 57: 'crash', 55: 'crash', 52: 'crash',
+        50: 'hightom',
+        48: 'midtom', 47: 'midtom',
+        45: 'floortom', 43: 'floortom', 41: 'floortom'
+      };
+      drumIdToNote = {};
+      DRUM_PARTS.forEach(part => {
+        drumIdToNote[part.id] = part.defaultNote;
+      });
+    }
+
+    function midiNoteToName(note) {
+      if (note === undefined || note === null) return '--';
+      const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      const octave = Math.floor(note / 12) - 1;
+      return `${names[note % 12]}${octave} (${note})`;
+    }
+
+    resetDrumMapping();
+
+    /**
+     * ============================================================================
+     * 2. 真實原聲爵士鼓 (Acoustic Drum Kit) 物理建模與錄音室聲學合成引擎
+     * ============================================================================
+     * 架構包含：
+     *  - Master DynamicsCompressorNode：模擬錄音室類比母帶匯流排壓縮，凝聚鼓組動態
+     *  - Studio Room ConvolverNode：0.48 秒木質錄音室早期反射與自然殘響 (Room Mic)
+     *  - Acoustic Kick：鼓槌瞬態脈衝 (Beater Click) + 鼓皮基頻下潛 + 箱體飽和暖度
+     *  - Acoustic Snare：雙層鼓皮共振體 + 響弦多段顆粒震動 (Snare Wires)
+     *  - Bronze Hi-Hat / Crash：6 組非諧波青銅金屬振盪器陣列 + 多重共振峰濾波
+     *  - Rack Tom：雙面鼓皮音高彎曲 + 木質腔體帶通共鳴
+     */
+    let audioCtx = null;
+    let masterBus = null;
+    let roomSendGain = null;
+    let roomConvolver = null;
+    let softClipCurve = null;
+    let roomAmbienceAmount = 0.45; // 預設 45% 錄音室空間感
+
+    // 建立類比磁帶/真空管軟削波曲線 (增加大鼓與小鼓的木質溫暖厚度)
+    function createWarmSaturationCurve(amount = 18) {
+      const nSamples = 44100;
+      const curve = new Float32Array(nSamples);
+      const deg = Math.PI / 180;
+      for (let i = 0; i < nSamples; ++i) {
+        const x = (i * 2) / nSamples - 1;
+        curve[i] = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
+      }
+      return curve;
+    }
+
+    // 動態生成真實木質錄音室脈衝響應 (Impulse Response)
+    function buildStudioRoomImpulse(ctx, duration = 0.48, decay = 3.2) {
+      const rate = ctx.sampleRate;
+      const length = Math.floor(rate * duration);
+      const impulse = ctx.createBuffer(2, length, rate);
+
+      for (let ch = 0; ch < 2; ch++) {
+        const channelData = impulse.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+          const t = i / rate;
+          // 模擬錄音室牆面早期反射 (Early Reflections, 前 45ms 密集反射)
+          let early = 0;
+          if (t < 0.045) {
+            early = (Math.random() * 2 - 1) * Math.exp(-t * 35) * 0.65;
+          }
+          // 模擬溫暖木質房間自然尾韻 (Diffuse Tail)
+          const env = Math.pow(1 - i / length, decay);
+          const white = Math.random() * 2 - 1;
+          channelData[i] = (early + white * 0.55) * env;
+        }
+      }
+      return impulse;
+    }
+
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+
+        // 1. 母帶動態壓縮器 (Glue Compressor)
+        const compressor = audioCtx.createDynamicsCompressor();
+        compressor.threshold.setValueAtTime(-14, audioCtx.currentTime);
+        compressor.knee.setValueAtTime(12, audioCtx.currentTime);
+        compressor.ratio.setValueAtTime(3.5, audioCtx.currentTime);
+        compressor.attack.setValueAtTime(0.004, audioCtx.currentTime);
+        compressor.release.setValueAtTime(0.16, audioCtx.currentTime);
+
+        const makeupGain = audioCtx.createGain();
+        makeupGain.gain.setValueAtTime(1.18, audioCtx.currentTime);
+
+        compressor.connect(makeupGain);
+        makeupGain.connect(audioCtx.destination);
+        masterBus = compressor;
+
+        // 2. 錄音室房間殘響匯流排 (Room Mic Bus + 溫暖低通濾波)
+        roomConvolver = audioCtx.createConvolver();
+        roomConvolver.buffer = buildStudioRoomImpulse(audioCtx, 0.48, 3.4);
+
+        const roomToneFilter = audioCtx.createBiquadFilter();
+        roomToneFilter.type = 'lowpass';
+        roomToneFilter.frequency.setValueAtTime(4800, audioCtx.currentTime); // 木質錄音室吸收刺耳超高頻
+
+        roomSendGain = audioCtx.createGain();
+        roomSendGain.gain.setValueAtTime(roomAmbienceAmount * 0.85, audioCtx.currentTime);
+
+        roomSendGain.connect(roomConvolver);
+        roomConvolver.connect(roomToneFilter);
+        roomToneFilter.connect(masterBus);
+
+        softClipCurve = createWarmSaturationCurve(14);
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // 將個別鼓件依比例送入近場收音 (Close Mic) 與房間麥克風 (Room Mic)
+    function routeDrumVoice(ctx, sourceNode, dryLevel, roomSendRatio) {
+      const dryGain = ctx.createGain();
+      dryGain.gain.setValueAtTime(dryLevel, ctx.currentTime);
+      sourceNode.connect(dryGain);
+      dryGain.connect(masterBus);
+
+      if (roomSendRatio > 0 && roomSendGain) {
+        const wetGain = ctx.createGain();
+        wetGain.gain.setValueAtTime(dryLevel * roomSendRatio, ctx.currentTime);
+        sourceNode.connect(wetGain);
+        wetGain.connect(roomSendGain);
+      }
+    }
+
+    // 建立可重用的粉紅噪音緩衝區 (比純白噪音更接近真實空氣與木質摩擦質感)
+    let cachedPinkNoiseBuffer = null;
+    function getPinkNoiseBuffer(ctx) {
+      if (cachedPinkNoiseBuffer && cachedPinkNoiseBuffer.sampleRate === ctx.sampleRate) {
+        return cachedPinkNoiseBuffer;
+      }
+      const bufferSize = ctx.sampleRate * 2.0;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const output = buffer.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.045;
+        b6 = white * 0.115926;
+      }
+      cachedPinkNoiseBuffer = buffer;
+      return buffer;
+    }
+
+    function playDrumSound(drumId, velocity = 100) {
+      try {
+        const ctx = ensureAudioContext();
+        const now = ctx.currentTime;
+        // 力度曲線：模擬真實原聲鼓隨敲擊力道產生的音量與明亮度變化
+        const velNorm = Math.max(0.08, Math.min(1.0, velocity / 127));
+        const dynGain = Math.pow(velNorm, 1.25);
+
+        if (drumId === 'kick') {
+          /**
+           * 1. 22吋楓木原聲大鼓 (Acoustic Maple Kick)
+           */
+          const voiceMix = ctx.createGain();
+
+          // (A) 鼓皮基頻與箱體低頻下潛 (115Hz -> 48Hz)
+          const bodyOsc = ctx.createOscillator();
+          const bodyGain = ctx.createGain();
+          bodyOsc.type = 'sine';
+          bodyOsc.frequency.setValueAtTime(118, now);
+          bodyOsc.frequency.exponentialRampToValueAtTime(54, now + 0.065);
+          bodyOsc.frequency.exponentialRampToValueAtTime(44, now + 0.26);
+
+          bodyGain.gain.setValueAtTime(0.001, now);
+          bodyGain.gain.linearRampToValueAtTime(1.05 * dynGain, now + 0.004);
+          bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+
+          bodyOsc.connect(bodyGain);
+          bodyGain.connect(voiceMix);
+          bodyOsc.start(now);
+          bodyOsc.stop(now + 0.34);
+
+          // (B) 毛氈鼓槌擊皮瞬態聲 (Beater Click - 帶通濾波短脈衝)
+          const clickNoise = ctx.createBufferSource();
+          clickNoise.buffer = getPinkNoiseBuffer(ctx);
+          const clickFilter = ctx.createBiquadFilter();
+          clickFilter.type = 'bandpass';
+          clickFilter.frequency.setValueAtTime(2200 + velNorm * 1400, now);
+          clickFilter.Q.setValueAtTime(1.8, now);
+
+          const clickGain = ctx.createGain();
+          clickGain.gain.setValueAtTime(0.65 * dynGain, now);
+          clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.024);
+
+          clickNoise.connect(clickFilter);
+          clickFilter.connect(clickGain);
+          clickGain.connect(voiceMix);
+          clickNoise.start(now);
+          clickNoise.stop(now + 0.03);
+
+          // (C) 箱體空氣共鳴 (160Hz 溫暖木腔厚度) + 類比軟飽和
+          const shaper = ctx.createWaveShaper();
+          shaper.curve = softClipCurve;
+          voiceMix.connect(shaper);
+
+          routeDrumVoice(ctx, shaper, 1.0, 0.22); // 大鼓保持緊實，送出少量房間殘響
+        } 
+        else if (drumId === 'snare') {
+          /**
+           * 2. 14吋原聲響弦小鼓 (Acoustic Snare Drum)
+           */
+          const voiceMix = ctx.createGain();
+
+          // (A) 雙層鼓皮基頻與泛音 (185Hz 鼓腔主頻 + 328Hz 鼓邊泛音)
+          const shellOsc1 = ctx.createOscillator();
+          const shellOsc2 = ctx.createOscillator();
+          const shellGain = ctx.createGain();
+
+          shellOsc1.type = 'triangle';
+          shellOsc1.frequency.setValueAtTime(215, now);
+          shellOsc1.frequency.exponentialRampToValueAtTime(178, now + 0.08);
+
+          shellOsc2.type = 'sine';
+          shellOsc2.frequency.setValueAtTime(342, now);
+          shellOsc2.frequency.exponentialRampToValueAtTime(295, now + 0.06);
+
+          shellGain.gain.setValueAtTime(0.001, now);
+          shellGain.gain.linearRampToValueAtTime(0.62 * dynGain, now + 0.002);
+          shellGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+          shellOsc1.connect(shellGain);
+          shellOsc2.connect(shellGain);
+          shellGain.connect(voiceMix);
+          shellOsc1.start(now);
+          shellOsc2.start(now);
+          shellOsc1.stop(now + 0.15);
+          shellOsc2.stop(now + 0.15);
+
+          // (B) 鼓棒敲擊瞬態 (Stick Attack)
+          const stickNoise = ctx.createBufferSource();
+          stickNoise.buffer = getPinkNoiseBuffer(ctx);
+          const stickFilter = ctx.createBiquadFilter();
+          stickFilter.type = 'bandpass';
+          stickFilter.frequency.setValueAtTime(1600, now);
+          stickFilter.Q.setValueAtTime(1.2, now);
+          const stickGain = ctx.createGain();
+          stickGain.gain.setValueAtTime(0.55 * dynGain, now);
+          stickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+          stickNoise.connect(stickFilter);
+          stickFilter.connect(stickGain);
+          stickGain.connect(voiceMix);
+          stickNoise.start(now);
+          stickNoise.stop(now + 0.03);
+
+          // (C) 響弦沙沙聲 (Snare Wires - 高通 + 帶通共振峰模擬金屬響弦貼合鼓皮震動)
+          const snareWireNoise = ctx.createBufferSource();
+          snareWireNoise.buffer = getPinkNoiseBuffer(ctx);
+
+          const wireHighpass = ctx.createBiquadFilter();
+          wireHighpass.type = 'highpass';
+          wireHighpass.frequency.setValueAtTime(950, now);
+
+          const wirePeak = ctx.createBiquadFilter();
+          wirePeak.type = 'peaking';
+          wirePeak.frequency.setValueAtTime(2800 + velNorm * 1800, now); // 越用力響弦越亮
+          wirePeak.Q.setValueAtTime(1.6, now);
+          wirePeak.gain.setValueAtTime(6.5, now);
+
+          const wireLowpass = ctx.createBiquadFilter();
+          wireLowpass.type = 'lowpass';
+          wireLowpass.frequency.setValueAtTime(6500 + velNorm * 5500, now);
+
+          const wireGain = ctx.createGain();
+          // 響弦包絡：初始爆發 -> 0.035秒微回彈 -> 自然消散
+          wireGain.gain.setValueAtTime(0.001, now);
+          wireGain.gain.linearRampToValueAtTime(0.95 * dynGain, now + 0.003);
+          wireGain.gain.exponentialRampToValueAtTime(0.28 * dynGain, now + 0.055);
+          wireGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+
+          snareWireNoise.connect(wireHighpass);
+          wireHighpass.connect(wirePeak);
+          wirePeak.connect(wireLowpass);
+          wireLowpass.connect(wireGain);
+          wireGain.connect(voiceMix);
+
+          snareWireNoise.start(now);
+          snareWireNoise.stop(now + 0.26);
+
+          routeDrumVoice(ctx, voiceMix, 0.95, 0.72); // 小鼓送出豐富錄音室空間感
+        } 
+        else if (drumId === 'hihat' || drumId === 'openhh' || drumId === 'crash' || drumId === 'ride') {
+          /**
+           * 3 & 5. 青銅手工鈸片物理建模 (Bronze Hi-Hat, Ride & Crash Cymbal)
+           * 使用 6 個非諧波金屬方波振盪器陣列 + 粉紅噪音空氣感 + 多段共振峰濾波
+           */
+          const isClosedHH = drumId === 'hihat';
+          const isOpenHH = drumId === 'openhh';
+          const isRide = drumId === 'ride';
+          const duration = isClosedHH ? 0.065 : (isOpenHH ? 0.48 : (isRide ? 1.35 : 1.75));
+
+          const cymbalMix = ctx.createGain();
+
+          // 非諧波金屬泛音比例 (模擬青銅合金敲擊震動模態)
+          const baseFreqs = drumId === 'crash'
+            ? [312, 468, 643, 889, 1245, 1730]
+            : (isRide ? [342, 512, 768, 1085, 1520, 2140] : [365, 518, 724, 1015, 1420, 1980]);
+
+          const metalBus = ctx.createGain();
+          metalBus.gain.setValueAtTime(isRide ? 0.24 : 0.28, now);
+
+          baseFreqs.forEach((f, idx) => {
+            const osc = ctx.createOscillator();
+            osc.type = 'square';
+            if (drumId === 'crash') {
+              osc.frequency.setValueAtTime(f * 1.025, now);
+              osc.frequency.exponentialRampToValueAtTime(f, now + 0.09);
+            } else {
+              osc.frequency.setValueAtTime(f, now);
+            }
+            const partialGain = ctx.createGain();
+            partialGain.gain.setValueAtTime(1 / (1 + idx * 0.22), now);
+            osc.connect(partialGain);
+            partialGain.connect(metalBus);
+            osc.start(now);
+            osc.stop(now + duration + 0.05);
+          });
+
+          // Ride 疊音鈸專屬：加入清脆的鼓棒木頭敲擊鈸身顆粒感 (Stick Ping)
+          if (isRide) {
+            const pingOsc = ctx.createOscillator();
+            const pingGain = ctx.createGain();
+            pingOsc.type = 'sine';
+            pingOsc.frequency.setValueAtTime(2840, now);
+            pingOsc.frequency.exponentialRampToValueAtTime(2420, now + 0.045);
+            pingGain.gain.setValueAtTime(0.42 * dynGain, now);
+            pingGain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+            pingOsc.connect(pingGain);
+            pingGain.connect(cymbalMix);
+            pingOsc.start(now);
+            pingOsc.stop(now + 0.11);
+          }
+
+          // 混入細膩空氣高頻噪音 (模擬鼓棒木頭敲擊青銅表面的刷擦感)
+          const airNoise = ctx.createBufferSource();
+          airNoise.buffer = getPinkNoiseBuffer(ctx);
+          const airGain = ctx.createGain();
+          airGain.gain.setValueAtTime(drumId === 'crash' ? 0.75 : (isRide ? 0.35 : 0.45), now);
+          airNoise.connect(airGain);
+          airGain.connect(metalBus);
+          airNoise.start(now);
+          airNoise.stop(now + duration + 0.05);
+
+          // 青銅鈸片高通與共振峰雕塑
+          const hpFilter = ctx.createBiquadFilter();
+          hpFilter.type = 'highpass';
+          hpFilter.frequency.setValueAtTime(drumId === 'crash' ? 3200 : (isRide ? 4200 : 6200), now);
+
+          const shimmerPeak = ctx.createBiquadFilter();
+          shimmerPeak.type = 'peaking';
+          shimmerPeak.frequency.setValueAtTime(drumId === 'crash' ? 7800 : (isRide ? 6400 : 9600), now);
+          shimmerPeak.Q.setValueAtTime(1.4, now);
+          shimmerPeak.gain.setValueAtTime(5.0, now);
+
+          const envGain = ctx.createGain();
+          envGain.gain.setValueAtTime(0.001, now);
+          envGain.gain.linearRampToValueAtTime((drumId === 'crash' ? 0.68 : (isRide ? 0.46 : 0.52)) * dynGain, now + 0.003);
+
+          if (isClosedHH) {
+            envGain.gain.exponentialRampToValueAtTime(0.001, now + 0.062);
+          } else if (isOpenHH) {
+            envGain.gain.exponentialRampToValueAtTime(0.18 * dynGain, now + 0.16);
+            envGain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+          } else if (isRide) {
+            // 20吋疊音鈸：柔和且綿長的青銅水波底噪 (Wash)
+            envGain.gain.exponentialRampToValueAtTime(0.16 * dynGain, now + 0.22);
+            envGain.gain.exponentialRampToValueAtTime(0.001, now + 1.35);
+          } else {
+            envGain.gain.exponentialRampToValueAtTime(0.32 * dynGain, now + 0.25);
+            envGain.gain.exponentialRampToValueAtTime(0.001, now + 1.75);
+          }
+
+          metalBus.connect(hpFilter);
+          hpFilter.connect(shimmerPeak);
+          shimmerPeak.connect(envGain);
+          envGain.connect(cymbalMix);
+
+          routeDrumVoice(ctx, cymbalMix, 0.85, drumId === 'crash' ? 0.95 : (isRide ? 0.72 : 0.55));
+        } 
+        else if (drumId === 'hightom' || drumId === 'midtom' || drumId === 'floortom') {
+          /**
+           * 4. 原聲楓木桶鼓與落地鼓組 (10" High Tom / 12" Mid Tom / 16" Floor Tom)
+           */
+          const tomMix = ctx.createGain();
+
+          const tomSpecs = {
+            hightom:  { startFreq: 235, endFreq: 152, overStart: 352, overEnd: 228, decay: 0.30, clickFreq: 1450 },
+            midtom:   { startFreq: 184, endFreq: 118, overStart: 276, overEnd: 177, decay: 0.36, clickFreq: 1200 },
+            floortom: { startFreq: 132, endFreq: 76,  overStart: 198, overEnd: 114, decay: 0.46, clickFreq: 950 }
+          };
+          const spec = tomSpecs[drumId];
+
+          // 雙面鼓皮共振音高滑落
+          const tomOsc = ctx.createOscillator();
+          const tomOverTone = ctx.createOscillator();
+          const tomGain = ctx.createGain();
+
+          tomOsc.type = 'sine';
+          tomOsc.frequency.setValueAtTime(spec.startFreq, now);
+          tomOsc.frequency.exponentialRampToValueAtTime(spec.endFreq, now + spec.decay * 0.52);
+
+          tomOverTone.type = 'triangle';
+          tomOverTone.frequency.setValueAtTime(spec.overStart, now);
+          tomOverTone.frequency.exponentialRampToValueAtTime(spec.overEnd, now + spec.decay * 0.38);
+
+          const overGain = ctx.createGain();
+          overGain.gain.setValueAtTime(0.28, now);
+          tomOverTone.connect(overGain);
+
+          tomGain.gain.setValueAtTime(0.001, now);
+          tomGain.gain.linearRampToValueAtTime(0.95 * dynGain, now + 0.003);
+          tomGain.gain.exponentialRampToValueAtTime(0.001, now + spec.decay);
+
+          tomOsc.connect(tomGain);
+          overGain.connect(tomGain);
+          tomGain.connect(tomMix);
+
+          tomOsc.start(now);
+          tomOverTone.start(now);
+          tomOsc.stop(now + spec.decay + 0.03);
+          tomOverTone.stop(now + spec.decay + 0.03);
+
+          // 鼓棒擊皮瞬態
+          const headClick = ctx.createBufferSource();
+          headClick.buffer = getPinkNoiseBuffer(ctx);
+          const headFilter = ctx.createBiquadFilter();
+          headFilter.type = 'bandpass';
+          headFilter.frequency.setValueAtTime(spec.clickFreq + velNorm * 850, now);
+          const headGain = ctx.createGain();
+          headGain.gain.setValueAtTime(0.42 * dynGain, now);
+          headGain.gain.exponentialRampToValueAtTime(0.001, now + 0.022);
+          headClick.connect(headFilter);
+          headFilter.connect(headGain);
+          headGain.connect(tomMix);
+          headClick.start(now);
+          headClick.stop(now + 0.03);
+
+          routeDrumVoice(ctx, tomMix, 0.92, 0.65);
+        }
+      } catch (e) {
+        console.warn('Audio playback skipped:', e);
+      }
+    }
+
+    // 木質節拍器音效 (Woodblock Click 質感，避免刺耳嗶嗶聲)
+    function playMetronomeClick(isDownbeat) {
+      try {
+        const ctx = ensureAudioContext();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(isDownbeat ? 1150 : 780, now);
+        osc.frequency.exponentialRampToValueAtTime(isDownbeat ? 620 : 440, now + 0.025);
+        gain.gain.setValueAtTime(isDownbeat ? 0.32 : 0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.038);
+        osc.connect(gain);
+        gain.connect(masterBus || ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.045);
+      } catch (e) {}
+    }
+
+    /**
+     * ============================================================================
+     * 3. 內建練習曲目與標準 MIDI (.mid) 二進位解析器
+     * ============================================================================
+     */
+    const BUILTIN_SONGS = {
+      rock8: {
+        title: '曲目 1：基礎八分音符搖滾 (8-Beat Rock)',
+        bpm: 95,
+        measures: 4,
+        notes: [
+          // 第 1 小節
+          { beat: 0.0, drum: 'crash' }, { beat: 0.0, drum: 'kick' },
+          { beat: 0.5, drum: 'hihat' },
+          { beat: 1.0, drum: 'hihat' }, { beat: 1.0, drum: 'snare' },
+          { beat: 1.5, drum: 'hihat' },
+          { beat: 2.0, drum: 'hihat' }, { beat: 2.0, drum: 'kick' },
+          { beat: 2.5, drum: 'hihat' },
+          { beat: 3.0, drum: 'hihat' }, { beat: 3.0, drum: 'snare' },
+          { beat: 3.5, drum: 'hihat' },
+          // 第 2 小節
+          { beat: 4.0, drum: 'hihat' }, { beat: 4.0, drum: 'kick' },
+          { beat: 4.5, drum: 'hihat' },
+          { beat: 5.0, drum: 'hihat' }, { beat: 5.0, drum: 'snare' },
+          { beat: 5.5, drum: 'hihat' }, { beat: 5.5, drum: 'kick' },
+          { beat: 6.0, drum: 'hihat' }, { beat: 6.0, drum: 'kick' },
+          { beat: 6.5, drum: 'hihat' },
+          { beat: 7.0, drum: 'hihat' }, { beat: 7.0, drum: 'snare' },
+          { beat: 7.5, drum: 'openhh' },
+          // 第 3 小節 (切換至 Ride 疊音鈸帶動律動)
+          { beat: 8.0, drum: 'ride' }, { beat: 8.0, drum: 'kick' },
+          { beat: 8.5, drum: 'ride' },
+          { beat: 9.0, drum: 'ride' }, { beat: 9.0, drum: 'snare' },
+          { beat: 9.5, drum: 'ride' },
+          { beat: 10.0, drum: 'ride' }, { beat: 10.0, drum: 'kick' },
+          { beat: 10.5, drum: 'ride' },
+          { beat: 11.0, drum: 'ride' }, { beat: 11.0, drum: 'snare' },
+          { beat: 11.5, drum: 'ride' },
+          // 第 4 小節 (高音桶鼓 -> 中音桶鼓 -> 落地鼓三層過門)
+          { beat: 12.0, drum: 'ride' }, { beat: 12.0, drum: 'kick' },
+          { beat: 12.5, drum: 'ride' },
+          { beat: 13.0, drum: 'ride' }, { beat: 13.0, drum: 'snare' },
+          { beat: 13.5, drum: 'hightom' },
+          { beat: 14.0, drum: 'hightom' }, { beat: 14.5, drum: 'midtom' },
+          { beat: 15.0, drum: 'midtom' },  { beat: 15.5, drum: 'floortom' }
+        ]
+      },
+      funk: {
+        title: '曲目 2：放克切分與小鼓鬼音 (Funk Groove)',
+        bpm: 88,
+        measures: 2,
+        notes: [
+          // 第 1 小節
+          { beat: 0.0, drum: 'crash' }, { beat: 0.0, drum: 'kick' },
+          { beat: 0.5, drum: 'hihat' },
+          { beat: 0.75, drum: 'snare' }, // 鬼音
+          { beat: 1.0, drum: 'hihat' }, { beat: 1.0, drum: 'snare' },
+          { beat: 1.5, drum: 'hihat' },
+          { beat: 1.75, drum: 'kick' },
+          { beat: 2.25, drum: 'snare' }, // 鬼音
+          { beat: 2.5, drum: 'openhh' }, { beat: 2.5, drum: 'kick' },
+          { beat: 3.0, drum: 'hihat' }, { beat: 3.0, drum: 'snare' },
+          { beat: 3.5, drum: 'hihat' },
+          // 第 2 小節
+          { beat: 4.0, drum: 'hihat' }, { beat: 4.0, drum: 'kick' },
+          { beat: 4.5, drum: 'hihat' }, { beat: 4.5, drum: 'kick' },
+          { beat: 5.0, drum: 'hihat' }, { beat: 5.0, drum: 'snare' },
+          { beat: 5.75, drum: 'snare' },
+          { beat: 6.0, drum: 'hihat' }, { beat: 6.0, drum: 'kick' },
+          { beat: 6.5, drum: 'hihat' },
+          { beat: 7.0, drum: 'snare' },
+          { beat: 7.5, drum: 'midtom' },
+          { beat: 7.75, drum: 'floortom' }
+        ]
+      },
+      fill: {
+        title: '曲目 3：十六分音符全套桶鼓過門與碎音鈸 (Full Tom Fill & Crash)',
+        bpm: 90,
+        measures: 2,
+        notes: [
+          // 第 1 小節：穩固節奏
+          { beat: 0.0, drum: 'crash' }, { beat: 0.0, drum: 'kick' },
+          { beat: 0.5, drum: 'ride' },
+          { beat: 1.0, drum: 'ride' }, { beat: 1.0, drum: 'snare' },
+          { beat: 1.5, drum: 'ride' },
+          { beat: 2.0, drum: 'ride' }, { beat: 2.0, drum: 'kick' },
+          { beat: 2.5, drum: 'ride' }, { beat: 2.5, drum: 'kick' },
+          { beat: 3.0, drum: 'ride' }, { beat: 3.0, drum: 'snare' },
+          { beat: 3.5, drum: 'openhh' },
+          // 第 2 小節：小鼓 -> 高音桶鼓 -> 中音桶鼓 -> 落地鼓 16分音符過門
+          { beat: 4.0, drum: 'snare' },    { beat: 4.25, drum: 'snare' },
+          { beat: 4.5, drum: 'snare' },    { beat: 4.75, drum: 'snare' },
+          { beat: 5.0, drum: 'hightom' },  { beat: 5.25, drum: 'hightom' },
+          { beat: 5.5, drum: 'midtom' },   { beat: 5.75, drum: 'midtom' },
+          { beat: 6.0, drum: 'floortom' }, { beat: 6.25, drum: 'floortom' },
+          { beat: 6.5, drum: 'snare' },    { beat: 6.75, drum: 'kick' },
+          { beat: 7.0, drum: 'crash' },    { beat: 7.0, drum: 'kick' }
+        ]
+      }
+    };
+
+    /**
+     * 純 JavaScript Standard MIDI File (.mid) 二進位解析器
+     * 支援 SMF Format 0 與 Format 1，自動萃取打擊樂音符與 Tempo
+     */
+    function parseStandardMidiFile(arrayBuffer, fileName) {
+      const view = new DataView(arrayBuffer);
+      let pos = 0;
+
+      function readStr(len) {
+        let s = '';
+        for (let i = 0; i < len; i++) s += String.fromCharCode(view.getUint8(pos++));
+        return s;
+      }
+      function readVarLen() {
+        let val = 0;
+        while (true) {
+          const b = view.getUint8(pos++);
+          val = (val << 7) | (b & 0x7f);
+          if (!(b & 0x80)) break;
+        }
+        return val;
+      }
+
+      if (readStr(4) !== 'MThd') {
+        throw new Error('無效的 MIDI 檔案格式');
+      }
+      const headerLen = view.getUint32(pos); pos += 4;
+      const format = view.getUint16(pos); pos += 2;
+      const numTracks = view.getUint16(pos); pos += 2;
+      const division = view.getUint16(pos); pos += 2;
+      pos = 8 + headerLen;
+
+      let detectedBpm = 100;
+      const rawEvents = [];
+
+      for (let t = 0; t < numTracks; t++) {
+        if (pos + 8 > view.byteLength) break;
+        const chunkType = readStr(4);
+        const chunkLen = view.getUint32(pos); pos += 4;
+        const chunkEnd = pos + chunkLen;
+
+        if (chunkType !== 'MTrk') {
+          pos = chunkEnd;
+          continue;
+        }
+
+        let ticks = 0;
+        let runningStatus = 0;
+
+        while (pos < chunkEnd) {
+          const delta = readVarLen();
+          ticks += delta;
+
+          let status = view.getUint8(pos);
+          if (status < 0x80) {
+            status = runningStatus;
+          } else {
+            pos++;
+            if (status < 0xf0) runningStatus = status;
+          }
+
+          if (status === 0xff) {
+            // Meta Event
+            const metaType = view.getUint8(pos++);
+            const len = readVarLen();
+            if (metaType === 0x51 && len === 3) {
+              const microsecPerBeat = (view.getUint8(pos) << 16) | (view.getUint8(pos + 1) << 8) | view.getUint8(pos + 2);
+              detectedBpm = Math.round(60000000 / microsecPerBeat);
+            }
+            pos += len;
+          } else if (status === 0xf0 || status === 0xf7) {
+            const len = readVarLen();
+            pos += len;
+          } else {
+            const cmd = status & 0xf0;
+            const channel = status & 0x0f;
+            const d1 = view.getUint8(pos++);
+            const d2 = (cmd === 0xc0 || cmd === 0xd0) ? 0 : view.getUint8(pos++);
+
+            if (cmd === 0x90 && d2 > 0) {
+              rawEvents.push({
+                beat: ticks / division,
+                channel,
+                note: d1,
+                velocity: d2
+              });
+            }
+          }
+        }
+        pos = chunkEnd;
+      }
+
+      // 優先篩選 Channel 9 (即 GM 標準第 10 軌鼓組)，若該 MIDI 檔沒有第 10 軌則使用全部音符
+      const ch10Events = rawEvents.filter(e => e.channel === 9);
+      const targetEvents = ch10Events.length > 0 ? ch10Events : rawEvents;
+
+      // 將 MIDI Note 映射為我們的五線譜鼓件
+      const mappedNotes = [];
+      let maxBeat = 4;
+
+      targetEvents.forEach(ev => {
+        // 量化至最近的 1/16 音符 (0.25 拍) 讓五線譜整齊清晰
+        const quantizedBeat = Math.round(ev.beat * 4) / 4;
+        if (quantizedBeat > maxBeat) maxBeat = quantizedBeat;
+
+        // 依 GM 鼓組規則分配鼓件
+        let drumId = noteToDrumId[ev.note];
+        if (!drumId) {
+          if (ev.note <= 36) drumId = 'kick';
+          else if (ev.note <= 40) drumId = 'snare';
+          else if (ev.note === 41 || ev.note === 43 || ev.note === 45) drumId = 'floortom';
+          else if (ev.note === 47 || ev.note === 48) drumId = 'midtom';
+          else if (ev.note === 50) drumId = 'hightom';
+          else if (ev.note === 46) drumId = 'openhh';
+          else if (ev.note === 51 || ev.note === 53 || ev.note === 59) drumId = 'ride';
+          else if (ev.note >= 49) drumId = 'crash';
+          else drumId = 'hihat';
+        }
+
+        // 避免同一拍出現重複相同的鼓件
+        const exists = mappedNotes.some(n => Math.abs(n.beat - quantizedBeat) < 0.01 && n.drum === drumId);
+        if (!exists) {
+          mappedNotes.push({ beat: quantizedBeat, drum: drumId });
+        }
+      });
+
+      mappedNotes.sort((a, b) => a.beat - b.beat);
+      const totalMeasures = Math.max(1, Math.ceil((maxBeat + 0.25) / 4));
+
+      return {
+        title: `匯入樂譜：${fileName} (${detectedBpm} BPM)`,
+        bpm: Math.max(40, Math.min(220, detectedBpm)),
+        measures: totalMeasures,
+        notes: mappedNotes
+      };
+    }
+
+    /**
+     * ============================================================================
+     * 4. 遊戲狀態、高精度時間引擎與判定邏輯
+     * ============================================================================
+     */
+    let currentSong = null;
+    let chartNotes = []; // 包含判定狀態：{ beat, drum, status: 'pending'|'perfect'|'good'|'miss' }
+    let isPlaying = false;
+    let gameMode = 'practice'; // 'practice' (練習模式：打對才前進) | 'perform' (表演模式：即時流動)
+    let isLooping = true;
+    let isMetronomeOn = true;
+    let speedPercent = 100;
+
+    // 時間軸同步變數
+    let lastFrameTime = 0;
+    let currentBeat = -4.0; // 開頭給 4 拍預備拍 (Count-in: 1, 2, 3, 4)
+    let lastMetronomeBeatInt = -999;
+    let targetAdvanceBeat = 0; // 練習模式下平滑推進的目標拍點
+
+    // 縮放比例狀態
+    let sheetZoomScale = 1.0;    // 主五線譜拍距縮放 (0.5 ~ 2.6)
+    let timelineZoomScale = 1.0; // 底部全曲時間軸縮放 (1.0 ~ 8.0)
+
+    // A-B 區間循環練習狀態 (以拍數 Beat 為單位，例如第 1 小節 = 0~4 拍)
+    let abLoopEnabled = false;
+    let loopStartBeat = 0;
+    let loopEndBeat = 16;
+
+    // 統計數據與判定特效
+    let stats = { combo: 0, perfect: 0, good: 0, miss: 0 };
+    let floatingEffects = [];
+
+    // 判定容許誤差 (毫秒)
+    const PERFECT_WINDOW_MS = 55;
+    const GOOD_WINDOW_MS = 125;
+
+    function getEffectiveBpm() {
+      const baseBpm = currentSong ? currentSong.bpm : 100;
+      return Math.round(baseBpm * (speedPercent / 100));
+    }
+
+    function loadSong(songObj) {
+      currentSong = songObj;
+      isPlaying = false;
+      abLoopEnabled = false;
+      loopStartBeat = 0;
+      loopEndBeat = (songObj.measures || 4) * 4;
+      updateAbLoopControlsUI();
+      updatePlayButtonUI();
+      resetPracticeState();
+      updateSongBanner();
+    }
+
+    function getActiveRangeBeats() {
+      const totalBeats = currentSong ? currentSong.measures * 4 : 16;
+      if (abLoopEnabled) {
+        return { start: loopStartBeat, end: loopEndBeat };
+      }
+      return { start: 0, end: totalBeats };
+    }
+
+    function resetPracticeState() {
+      const range = getActiveRangeBeats();
+      chartNotes = currentSong.notes.map(n => {
+        const inRange = n.beat >= range.start - 0.001 && n.beat < range.end - 0.001;
+        return {
+          ...n,
+          status: inRange ? 'pending' : 'skipped'
+        };
+      });
+
+      // 練習模式直接定位到選取範圍內的第一個音符開始；表演模式給 2~4 拍預備拍
+      if (gameMode === 'practice') {
+        const firstPending = chartNotes.find(n => n.status === 'pending');
+        const startBeat = firstPending ? firstPending.beat : range.start;
+        currentBeat = startBeat;
+        targetAdvanceBeat = startBeat;
+      } else {
+        currentBeat = range.start - 4.0;
+        targetAdvanceBeat = currentBeat;
+      }
+      lastMetronomeBeatInt = -999;
+      stats = { combo: 0, perfect: 0, good: 0, miss: 0 };
+      floatingEffects = [];
+      updateStatsUI();
+    }
+
+    function seekToBeat(beat) {
+      if (!currentSong) return;
+      const totalBeats = currentSong.measures * 4;
+      const clamped = Math.max(0, Math.min(totalBeats, beat));
+      currentBeat = clamped;
+      targetAdvanceBeat = clamped;
+      lastMetronomeBeatInt = Math.floor(clamped) - 1;
+
+      const range = getActiveRangeBeats();
+      chartNotes.forEach(n => {
+        const inRange = n.beat >= range.start - 0.001 && n.beat < range.end - 0.001;
+        if (!inRange) {
+          n.status = 'skipped';
+        } else if (n.beat < clamped - 0.01) {
+          n.status = 'skipped';
+        } else {
+          n.status = 'pending';
+        }
+      });
+
+      if (gameMode === 'practice') {
+        const nextPending = chartNotes.find(n => n.status === 'pending');
+        if (nextPending) {
+          targetAdvanceBeat = nextPending.beat;
+          if (!isPlaying) currentBeat = nextPending.beat;
+        }
+      }
+    }
+
+    function updateAbLoopControlsUI() {
+      if (!currentSong) return;
+      const startSel = document.getElementById('loop-start-select');
+      const endSel = document.getElementById('loop-end-select');
+      const toggleBtn = document.getElementById('btn-ab-toggle');
+
+      startSel.innerHTML = '';
+      endSel.innerHTML = '';
+
+      for (let m = 1; m <= currentSong.measures; m++) {
+        const optStart = document.createElement('option');
+        optStart.value = (m - 1) * 4;
+        optStart.textContent = `第 ${m} 小節`;
+        if (Math.round(loopStartBeat / 4) + 1 === m) optStart.selected = true;
+        startSel.appendChild(optStart);
+
+        const optEnd = document.createElement('option');
+        optEnd.value = m * 4;
+        optEnd.textContent = `第 ${m} 小節末`;
+        if (Math.round(loopEndBeat / 4) === m) optEnd.selected = true;
+        endSel.appendChild(optEnd);
+      }
+
+      if (abLoopEnabled) {
+        toggleBtn.textContent = '🔁 A-B 區間循環：開';
+        toggleBtn.className = 'px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400 text-amber-300 font-bold transition shadow';
+      } else {
+        toggleBtn.textContent = '🔁 A-B 區間循環：關';
+        toggleBtn.className = 'px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 font-semibold transition';
+      }
+    }
+
+    function updateSongBanner() {
+      if (!currentSong) return;
+      const effBpm = getEffectiveBpm();
+      document.getElementById('song-title-banner').textContent = `${currentSong.title} — 實際速度: ${effBpm} BPM`;
+      document.getElementById('bpm-display').textContent = `${speedPercent}% (${effBpm})`;
+    }
+
+    function updateStatsUI() {
+      document.getElementById('stat-combo').textContent = stats.combo;
+      document.getElementById('stat-breakdown').textContent = `${stats.perfect} / ${stats.good} / ${stats.miss}`;
+      const totalJudged = stats.perfect + stats.good + stats.miss;
+      const acc = totalJudged === 0 ? 100 : Math.round(((stats.perfect * 1.0 + stats.good * 0.7) / totalJudged) * 100);
+      document.getElementById('stat-accuracy').textContent = `${acc}%`;
+    }
+
+    function spawnFloatingEffect(text, color, staffStep) {
+      floatingEffects.push({
+        text,
+        color,
+        staffStep,
+        createdAt: performance.now()
+      });
+    }
+
+    // 處理來自 MIDI 裝置、鍵盤或滑鼠的鼓點觸發
+    function triggerDrumHit(drumId, velocity = 100, sourceLabel = '') {
+      playDrumSound(drumId, velocity);
+
+      // 視覺鼓墊閃爍回饋
+      const padEl = document.getElementById(`pad-${drumId}`);
+      if (padEl) {
+        padEl.classList.add('pad-active');
+        clearTimeout(padEl._timer);
+        padEl._timer = setTimeout(() => padEl.classList.remove('pad-active'), 110);
+      }
+
+      if (sourceLabel) {
+        document.getElementById('stat-last-midi').textContent = sourceLabel;
+      }
+
+      const part = DRUM_PARTS.find(p => p.id === drumId);
+      const staffStep = part ? part.staffStep : 5;
+
+      // 若未按下「開始」，僅提供自由敲擊試音
+      if (!isPlaying || !currentSong) {
+        return;
+      }
+
+      // =========================================================================
+      // 分支 A：🎓 練習（學習）模式 — 必須完整打對當前拍點的所有同時音符，才推進下一拍
+      // =========================================================================
+      if (gameMode === 'practice') {
+        const pendingNotes = chartNotes.filter(n => n.status === 'pending');
+        if (pendingNotes.length === 0) return;
+
+        // 找出目前最前面的目標拍點時間
+        const currentTargetBeat = pendingNotes[0].beat;
+        const chordNotes = pendingNotes.filter(n => Math.abs(n.beat - currentTargetBeat) < 0.01);
+
+        // 檢查玩家敲的鼓件是否在這個拍點的目標清單中
+        const matchedNote = chordNotes.find(n => n.drum === drumId);
+
+        if (matchedNote) {
+          matchedNote.status = 'perfect';
+          stats.perfect++;
+          stats.combo++;
+          updateStatsUI();
+
+          // 檢查該時間點的「所有」同時音符是否都已經打對了
+          const remainingInChord = chordNotes.filter(n => n.status === 'pending');
+          if (remainingInChord.length === 0) {
+            spawnFloatingEffect('PERFECT!', '#10b981', staffStep);
+
+            // 尋找下一個未完成的拍點並推進游標
+            const nextPending = chartNotes.find(n => n.status === 'pending');
+            if (nextPending) {
+              targetAdvanceBeat = nextPending.beat;
+            } else {
+              // 當前練習範圍完成！
+              if (isLooping || abLoopEnabled) {
+                showToast(abLoopEnabled ? '🔁 A-B 區間循環重複練習！' : '🎉 完成一輪！自動重新開始下一輪循環練習');
+                setTimeout(() => {
+                  const range = getActiveRangeBeats();
+                  chartNotes.forEach(n => {
+                    const inRange = n.beat >= range.start - 0.001 && n.beat < range.end - 0.001;
+                    n.status = inRange ? 'pending' : 'skipped';
+                  });
+                  const firstPending = chartNotes.find(n => n.status === 'pending');
+                  const firstBeat = firstPending ? firstPending.beat : range.start;
+                  currentBeat = firstBeat;
+                  targetAdvanceBeat = firstBeat;
+                }, 260);
+              } else {
+                isPlaying = false;
+                updatePlayButtonUI();
+                showToast('🏆 恭喜完成整首曲目練習！');
+              }
+            }
+          } else {
+            // 還有同一拍的其他鼓件沒敲（例如同時要踩大鼓＋踩鈸，只敲了其中一個）
+            const missingNames = remainingInChord
+              .map(n => DRUM_PARTS.find(p => p.id === n.drum)?.short || n.drum)
+              .join(' + ');
+            spawnFloatingEffect(`還差 ${missingNames}`, '#38bdf8', staffStep);
+          }
+        } else {
+          // 敲錯鼓件：重置連擊並提示正確鼓件
+          stats.combo = 0;
+          stats.miss++;
+          updateStatsUI();
+          const expectedNames = chordNotes
+            .filter(n => n.status === 'pending')
+            .map(n => DRUM_PARTS.find(p => p.id === n.drum)?.short || n.drum)
+            .join(' + ');
+          spawnFloatingEffect(`請打 ${expectedNames}`, '#f43f5e', staffStep);
+        }
+        return;
+      }
+
+      // =========================================================================
+      // 分支 B：🎸 表演模式 — 隨節拍器即時滾動，比對時間誤差 (ms)
+      // =========================================================================
+      const effBpm = getEffectiveBpm();
+      const secPerBeat = 60 / effBpm;
+
+      let bestNote = null;
+      let bestDiffMs = Infinity;
+
+      for (const n of chartNotes) {
+        if (n.status !== 'pending' || n.drum !== drumId) continue;
+        const diffBeats = n.beat - currentBeat;
+        const diffMs = Math.abs(diffBeats * secPerBeat * 1000);
+        if (diffMs < bestDiffMs) {
+          bestDiffMs = diffMs;
+          bestNote = n;
+        }
+      }
+
+      if (bestNote && bestDiffMs <= GOOD_WINDOW_MS) {
+        if (bestDiffMs <= PERFECT_WINDOW_MS) {
+          bestNote.status = 'perfect';
+          stats.perfect++;
+          stats.combo++;
+          spawnFloatingEffect('PERFECT!', '#10b981', staffStep);
+        } else {
+          bestNote.status = 'good';
+          stats.good++;
+          stats.combo++;
+          const timingHint = (bestNote.beat - currentBeat) > 0 ? 'GOOD (偏快)' : 'GOOD (偏慢)';
+          spawnFloatingEffect(timingHint, '#f59e0b', staffStep);
+        }
+        updateStatsUI();
+      } else {
+        if (currentBeat >= 0) {
+          spawnFloatingEffect('•', '#94a3b8', staffStep);
+        }
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 5. Web MIDI API 硬體連線與 MIDI Learn 映射學習
+     * ============================================================================
+     */
+    let midiAccessObj = null;
+    let learningDrumId = null;
+
+    function updateMidiBadge(state, text) {
+      const dot = document.getElementById('midi-dot');
+      const label = document.getElementById('midi-status-text');
+      label.textContent = text;
+
+      if (state === 'connected') {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]';
+        label.className = 'text-emerald-300 font-semibold';
+      } else if (state === 'waiting') {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+        label.className = 'text-amber-200 font-medium';
+      } else {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-400';
+        label.className = 'text-rose-300 font-medium';
+      }
+    }
+
+    async function refreshMidiPorts() {
+      if (!midiAccessObj) return;
+      const inputs = Array.from(midiAccessObj.inputs.values());
+      if (inputs.length === 0) {
+        updateMidiBadge('waiting', '未偵測到 MIDI 裝置（可先用鍵盤或點擊鼓墊）');
+        return;
+      }
+
+      const activeNames = [];
+      for (const input of inputs) {
+        try {
+          if (input.state === 'connected' && input.connection !== 'open') {
+            await input.open();
+          }
+          input.onmidimessage = onMIDIMessage;
+          activeNames.push(input.name || 'MIDI 裝置');
+        } catch (err) {
+          console.warn('開啟 MIDI 埠失敗:', input.name, err);
+        }
+      }
+
+      if (activeNames.length > 0) {
+        updateMidiBadge('connected', `已連接：${activeNames.join(', ')}`);
+      } else {
+        updateMidiBadge('waiting', '偵測到裝置但尚未開啟，請點擊「重新掃描」');
+      }
+    }
+
+    async function initWebMIDI() {
+      if (!navigator.requestMIDIAccess) {
+        updateMidiBadge('error', '此瀏覽器不支援 Web MIDI（請用 Chrome / Edge）');
+        return;
+      }
+      try {
+        midiAccessObj = await navigator.requestMIDIAccess({ sysex: false });
+        await refreshMidiPorts();
+        midiAccessObj.onstatechange = () => {
+          refreshMidiPorts();
+        };
+      } catch (err) {
+        const isPermissionBlocked = err && (err.name === 'SecurityError' || String(err).includes('permissions policy'));
+        if (isPermissionBlocked) {
+          updateMidiBadge('error', '預覽視窗權限受限：請點右上角「⬇️ 下載單機版」用 Chrome 開啟');
+        } else {
+          updateMidiBadge('error', `MIDI 存取失敗 (${err.name || '未知錯誤'})`);
+        }
+      }
+    }
+
+    function onMIDIMessage(event) {
+      if (!event.data || event.data.length < 2) return;
+      const status = event.data[0];
+      const note = event.data[1];
+      const velocity = event.data.length > 2 ? event.data[2] : 100;
+      const command = status & 0xf0;
+
+      // 忽略 Clock (0xF8) 與 Active Sensing (0xFE) 等系統即時訊息
+      if (status >= 0xf0) return;
+
+      // 0x90 且 velocity > 0 代表真實敲擊觸發 (Omni Mode，同時接收 Channel 1 鍵盤與 Channel 10 電子鼓)
+      if (command === 0x90 && velocity > 0) {
+        // 如果正在進行「MIDI 鍵位學習模式」
+        if (learningDrumId) {
+          Object.keys(noteToDrumId).forEach(k => {
+            if (noteToDrumId[k] === learningDrumId) delete noteToDrumId[k];
+          });
+          noteToDrumId[note] = learningDrumId;
+          drumIdToNote[learningDrumId] = note;
+          const learnedPart = DRUM_PARTS.find(p => p.id === learningDrumId);
+          showToast(`✅ 已將「${learnedPart.name}」綁定至 ${midiNoteToName(note)}`);
+          learningDrumId = null;
+          renderMidiMappingModal();
+          renderDrumPadsUI();
+          playDrumSound(learnedPart.id, velocity);
+          return;
+        }
+
+        const drumId = noteToDrumId[note];
+        const infoText = `${midiNoteToName(note)} | 力道:${velocity}`;
+        if (drumId) {
+          triggerDrumHit(drumId, velocity, infoText);
+        } else {
+          document.getElementById('stat-last-midi').textContent = `未綁定 ${infoText}`;
+        }
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 6. 標準爵士鼓五線譜即時捲動渲染引擎 (HTML5 Canvas)
+     * ============================================================================
+     */
+    const canvas = document.getElementById('sheet-canvas');
+    const ctx = canvas.getContext('2d');
+    const timelineCanvas = document.getElementById('timeline-canvas');
+    const timelineCtx = timelineCanvas.getContext('2d');
+
+    function resizeCanvas() {
+      const container = document.getElementById('canvas-container');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = container.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const tlWrapper = document.getElementById('timeline-scroll-wrapper');
+      const tlContainer = document.getElementById('timeline-container');
+      if (tlWrapper && tlContainer) {
+        const wrapperWidth = tlWrapper.clientWidth || rect.width;
+        const scaledWidth = Math.max(wrapperWidth, Math.round(wrapperWidth * timelineZoomScale));
+        tlContainer.style.width = `${scaledWidth}px`;
+        const tlRect = tlContainer.getBoundingClientRect();
+        timelineCanvas.width = tlRect.width * dpr;
+        timelineCanvas.height = tlRect.height * dpr;
+        timelineCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+    }
+
+    function setSheetZoom(newScale) {
+      sheetZoomScale = Math.max(0.5, Math.min(2.6, newScale));
+      const pct = Math.round(sheetZoomScale * 100);
+      document.getElementById('sheet-zoom-slider').value = pct;
+      document.getElementById('sheet-zoom-display').textContent = `${pct}%`;
+    }
+
+    function setTimelineZoom(newScale, focusRatio = null) {
+      const tlWrapper = document.getElementById('timeline-scroll-wrapper');
+      const oldScrollLeft = tlWrapper ? tlWrapper.scrollLeft : 0;
+      const oldWidth = tlWrapper ? tlWrapper.scrollWidth : 1;
+      const viewW = tlWrapper ? tlWrapper.clientWidth : 1;
+
+      timelineZoomScale = Math.max(1.0, Math.min(8.0, newScale));
+      const pct = Math.round(timelineZoomScale * 100);
+      document.getElementById('tl-zoom-slider').value = pct;
+      document.getElementById('tl-zoom-display').textContent = `${timelineZoomScale.toFixed(1)}x`;
+
+      resizeCanvas();
+
+      // 保持縮放焦點位置穩定
+      if (tlWrapper && timelineZoomScale > 1.0) {
+        const newWidth = tlWrapper.scrollWidth;
+        const anchorRatio = focusRatio !== null
+          ? focusRatio
+          : ((oldScrollLeft + viewW * 0.5) / Math.max(1, oldWidth));
+        tlWrapper.scrollLeft = Math.max(0, anchorRatio * newWidth - viewW * 0.5);
+      }
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    function renderLoop(now) {
+      if (isPlaying && currentSong && !isDraggingTimeline) {
+        const dtSec = Math.min(0.1, (now - lastFrameTime) / 1000);
+        lastFrameTime = now;
+        const range = getActiveRangeBeats();
+
+        if (gameMode === 'practice') {
+          // 練習模式：游標平滑移動並停留在 targetAdvanceBeat，等待玩家打對當前拍點
+          const diff = targetAdvanceBeat - currentBeat;
+          if (Math.abs(diff) > 0.002) {
+            currentBeat += diff * Math.min(1, dtSec * 18);
+          } else {
+            currentBeat = targetAdvanceBeat;
+          }
+        } else {
+          // 表演模式：依照 BPM 穩定前進
+          const effBpm = getEffectiveBpm();
+          const beatsPerSec = effBpm / 60;
+          currentBeat += dtSec * beatsPerSec;
+
+          // 節拍器滴答聲
+          const beatInt = Math.floor(currentBeat);
+          if (beatInt !== lastMetronomeBeatInt) {
+            lastMetronomeBeatInt = beatInt;
+            if (isMetronomeOn) {
+              const isDownbeat = ((beatInt % 4) + 4) % 4 === 0;
+              playMetronomeClick(isDownbeat);
+            }
+          }
+
+          // 檢查超過容許時間仍未敲擊的音符 -> 標記為 Miss
+          const missThresholdBeats = (GOOD_WINDOW_MS / 1000) * beatsPerSec;
+          let missedAny = false;
+          for (const n of chartNotes) {
+            if (n.status === 'pending' && (currentBeat - n.beat) > missThresholdBeats) {
+              n.status = 'miss';
+              stats.miss++;
+              stats.combo = 0;
+              missedAny = true;
+              const part = DRUM_PARTS.find(p => p.id === n.drum);
+              spawnFloatingEffect('MISS', '#ef4444', part ? part.staffStep : 5);
+            }
+          }
+          if (missedAny) updateStatsUI();
+
+          // 區間結尾或全曲結尾循環處理
+          const endThreshold = abLoopEnabled ? range.end : range.end + 0.35;
+          if (currentBeat >= endThreshold) {
+            if (isLooping || abLoopEnabled) {
+              currentBeat = range.start;
+              lastMetronomeBeatInt = Math.floor(range.start) - 1;
+              chartNotes.forEach(n => {
+                const inRange = n.beat >= range.start - 0.001 && n.beat < range.end - 0.001;
+                n.status = inRange ? 'pending' : 'skipped';
+              });
+            } else {
+              isPlaying = false;
+              updatePlayButtonUI();
+              showToast('🎵 曲目演奏完成！');
+            }
+          }
+        }
+      } else {
+        lastFrameTime = now;
+      }
+
+      drawSheetMusic(now);
+      drawOverviewTimeline();
+      requestAnimationFrame(renderLoop);
+    }
+
+    /**
+     * 繪製底部「全曲總覽時間軸 (Overview Minimap)」與 A-B 循環區間遮罩
+     */
+    function drawOverviewTimeline() {
+      if (!currentSong || !timelineCanvas) return;
+      const dpr = window.devicePixelRatio || 1;
+      const width = timelineCanvas.width / dpr;
+      const height = timelineCanvas.height / dpr;
+      const totalBeats = Math.max(4, currentSong.measures * 4);
+
+      timelineCtx.clearRect(0, 0, width, height);
+
+      const beatToX = (b) => (b / totalBeats) * width;
+
+      // 1. 若開啟 A-B 區間循環，繪製高亮選取區間與左右邊界線
+      if (abLoopEnabled) {
+        const xA = beatToX(loopStartBeat);
+        const xB = beatToX(loopEndBeat);
+        timelineCtx.fillStyle = 'rgba(245, 158, 11, 0.18)';
+        timelineCtx.fillRect(xA, 0, Math.max(4, xB - xA), height);
+
+        timelineCtx.strokeStyle = '#f59e0b';
+        timelineCtx.lineWidth = 2;
+        timelineCtx.beginPath();
+        timelineCtx.moveTo(xA, 0);
+        timelineCtx.lineTo(xA, height);
+        timelineCtx.moveTo(xB, 0);
+        timelineCtx.lineTo(xB, height);
+        timelineCtx.stroke();
+
+        timelineCtx.fillStyle = '#fbbf24';
+        timelineCtx.font = 'bold 10px JetBrains Mono, monospace';
+        timelineCtx.fillText('A', xA + 3, 11);
+        timelineCtx.fillText('B', Math.max(xA + 12, xB - 10), 11);
+      }
+
+      // 2. 繪製小節分隔線與小節編號 (M1, M2...)
+      for (let m = 0; m <= currentSong.measures; m++) {
+        const x = beatToX(m * 4);
+        timelineCtx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+        timelineCtx.lineWidth = 1;
+        timelineCtx.beginPath();
+        timelineCtx.moveTo(x, 0);
+        timelineCtx.lineTo(x, height);
+        timelineCtx.stroke();
+
+        if (m < currentSong.measures) {
+          timelineCtx.fillStyle = '#64748b';
+          timelineCtx.font = '10px JetBrains Mono, monospace';
+          timelineCtx.fillText(`M${m + 1}`, x + 4, height - 4);
+        }
+      }
+
+      // 3. 繪製全曲音符縮圖圓點 (依鼓件垂直位置與顏色分布)
+      for (const note of chartNotes) {
+        const part = DRUM_PARTS.find(p => p.id === note.drum) || DRUM_PARTS[0];
+        const nx = beatToX(note.beat);
+        const ny = height - 8 - ((part.staffStep / 11) * (height - 16));
+
+        timelineCtx.fillStyle = note.status === 'perfect'
+          ? '#10b981'
+          : (note.status === 'miss' ? '#ef4444' : part.color);
+        timelineCtx.beginPath();
+        timelineCtx.arc(nx, ny, 2.2, 0, Math.PI * 2);
+        timelineCtx.fill();
+      }
+
+      // 4. 繪製當前播放指針位置 (Playhead Cursor)
+      const clampedBeat = Math.max(0, Math.min(totalBeats, currentBeat));
+      const cursorX = beatToX(clampedBeat);
+
+      // 當時間軸放大且正在播放時，自動讓捲軸跟隨播放指針保持在可視範圍內
+      const tlWrapper = document.getElementById('timeline-scroll-wrapper');
+      if (tlWrapper && timelineZoomScale > 1.01 && isPlaying && !isDraggingTimeline) {
+        const viewW = tlWrapper.clientWidth;
+        const scrollL = tlWrapper.scrollLeft;
+        if (cursorX < scrollL + 40 || cursorX > scrollL + viewW - 60) {
+          tlWrapper.scrollLeft = Math.max(0, cursorX - viewW * 0.25);
+        }
+      }
+
+      // 當前五線譜可視範圍框 (隨主五線譜縮放比例動態反映實際可視拍數)
+      const mainW = canvas.width / (window.devicePixelRatio || 1);
+      const basePxPerBeat = Math.max(95, Math.min(145, mainW / 6.5));
+      const activePxPerBeat = basePxPerBeat * sheetZoomScale;
+      const viewWindowBeats = mainW / activePxPerBeat;
+      const viewWidth = (viewWindowBeats / totalBeats) * width;
+      timelineCtx.fillStyle = 'rgba(56, 189, 248, 0.14)';
+      timelineCtx.fillRect(cursorX - viewWidth * 0.22, 0, viewWidth, height);
+
+      timelineCtx.strokeStyle = '#38bdf8';
+      timelineCtx.lineWidth = 2.5;
+      timelineCtx.beginPath();
+      timelineCtx.moveTo(cursorX, 0);
+      timelineCtx.lineTo(cursorX, height);
+      timelineCtx.stroke();
+    }
+
+    function drawSheetMusic(now) {
+      const width = canvas.width / (window.devicePixelRatio || 1);
+      const height = canvas.height / (window.devicePixelRatio || 1);
+
+      ctx.clearRect(0, 0, width, height);
+
+      // 五線譜幾何參數（套用使用者自由縮放比例 sheetZoomScale）
+      const hitLineX = Math.min(185, width * 0.25); // 左側判定線位置
+      const basePixelsPerBeat = Math.max(95, Math.min(145, width / 6.5));
+      const pixelsPerBeat = basePixelsPerBeat * sheetZoomScale;
+      const lineSpacing = 15; // 五線譜相鄰兩線間距 (px)，半間距為 7.5px
+      const topLineY = height * 0.36; // 第五線 (最頂端線) 的 Y 座標
+
+      // 輔助函式：將 staffStep (0=第一線, 8=第五線, 9=上加一間, 10=上加二線) 轉換為 Y 座標
+      const stepToY = (step) => topLineY + (8 - step) * (lineSpacing / 2);
+
+      // 1. 繪製五線譜五條主線 (step = 0, 2, 4, 6, 8)
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1.4;
+      for (let i = 0; i < 5; i++) {
+        const y = topLineY + i * lineSpacing;
+        ctx.beginPath();
+        ctx.moveTo(16, y);
+        ctx.lineTo(width - 16, y);
+        ctx.stroke();
+      }
+
+      // 2. 繪製左側打擊樂譜號 (Neutral Percussion Clef 雙豎線) 與 4/4 拍號
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(28, topLineY + lineSpacing, 4.5, lineSpacing * 2);
+      ctx.fillRect(36, topLineY + lineSpacing, 4.5, lineSpacing * 2);
+
+      ctx.font = 'bold 21px Inter, sans-serif';
+      ctx.fillText('4', 52, topLineY + lineSpacing * 1.65);
+      ctx.fillText('4', 52, topLineY + lineSpacing * 3.65);
+
+      // 3. 繪製小節線 (Barlines) 與小節編號
+      if (currentSong) {
+        const totalBeats = currentSong.measures * 4;
+        for (let b = 0; b <= totalBeats; b++) {
+          const x = hitLineX + (b - currentBeat) * pixelsPerBeat;
+          if (x < 75 || x > width + 40) continue;
+
+          const isMeasureStart = b % 4 === 0;
+          if (isMeasureStart) {
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, topLineY);
+            ctx.lineTo(x, topLineY + lineSpacing * 4);
+            ctx.stroke();
+
+            // 小節號標籤
+            const measureNum = Math.floor(b / 4) + 1;
+            ctx.fillStyle = '#475569';
+            ctx.font = 'bold 12px JetBrains Mono, monospace';
+            ctx.fillText(`M${measureNum}`, x + 5, topLineY - 26);
+          } else {
+            // 拍點淡虛線輔助對齊
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(x, topLineY - 6);
+            ctx.lineTo(x, topLineY + lineSpacing * 4 + 6);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+      }
+
+      // 4. 繪製左側判定基準線 (Playhead)
+      ctx.strokeStyle = gameMode === 'practice' ? '#0284c7' : '#6366f1';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(hitLineX, topLineY - 38);
+      ctx.lineTo(hitLineX, topLineY + lineSpacing * 4 + 38);
+      ctx.stroke();
+
+      // 判定線頂部指示三角形
+      ctx.fillStyle = gameMode === 'practice' ? '#0284c7' : '#6366f1';
+      ctx.beginPath();
+      ctx.moveTo(hitLineX - 7, topLineY - 44);
+      ctx.lineTo(hitLineX + 7, topLineY - 44);
+      ctx.lineTo(hitLineX, topLineY - 34);
+      ctx.closePath();
+      ctx.fill();
+
+      // 預備拍倒數提示 (Perform Mode Count-in: -4 ~ 0)
+      if (isPlaying && gameMode === 'perform' && currentBeat < 0) {
+        const countNum = Math.ceil(Math.abs(currentBeat));
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.roundRect(width / 2 - 95, topLineY + lineSpacing * 0.5, 190, 44, 12);
+        ctx.fill();
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '800 20px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`預備拍：${countNum}`, width / 2, topLineY + lineSpacing * 0.5 + 29);
+        ctx.textAlign = 'left';
+      }
+
+      // 5. 「一拍一群組」符尾橫樑 (Beaming) 與五線譜音符渲染
+      if (currentSong) {
+        // 找出練習模式下當前等待敲擊的拍點時間，用於高亮提示
+        let activePracticeBeat = null;
+        if (gameMode === 'practice') {
+          const firstPending = chartNotes.find(n => n.status === 'pending');
+          if (firstPending) activePracticeBeat = firstPending.beat;
+        }
+
+        // 先依「每個精確時間點 (beat)」將同時敲擊的鼓件合併為垂直和弦柱 (Chord Column)
+        const timeSlotsMap = new Map();
+        for (const note of chartNotes) {
+          const key = note.beat.toFixed(3);
+          if (!timeSlotsMap.has(key)) {
+            timeSlotsMap.set(key, {
+              beat: note.beat,
+              x: hitLineX + (note.beat - currentBeat) * pixelsPerBeat,
+              notes: []
+            });
+          }
+          timeSlotsMap.get(key).notes.push(note);
+        }
+
+        const timeSlots = Array.from(timeSlotsMap.values()).sort((a, b) => a.beat - b.beat);
+
+        // 再依「所屬整數拍 (Math.floor(beat))」分組，實現一拍一組橫樑連接
+        const beatGroupsMap = new Map();
+        for (const slot of timeSlots) {
+          const beatIndex = Math.floor(slot.beat + 0.0001);
+          if (!beatGroupsMap.has(beatIndex)) {
+            beatGroupsMap.set(beatIndex, []);
+          }
+          beatGroupsMap.get(beatIndex).push(slot);
+        }
+
+        const stemTopY = topLineY - 30; // 統一朝上的符桿頂端橫樑高度
+
+        for (const [beatIndex, slots] of beatGroupsMap.entries()) {
+          // 過濾出畫面可視範圍內的群組
+          const firstX = slots[0].x;
+          const lastX = slots[slots.length - 1].x;
+          if (lastX < 60 || firstX > width + 50) continue;
+
+          // 判斷該拍內是否存在十六分音符 (小數部分為 .25 或 .75)
+          const hasSixteenth = slots.some(s => {
+            const frac = Math.round((s.beat - Math.floor(s.beat)) * 100);
+            return frac === 25 || frac === 75;
+          });
+
+          // 計算每個時間點的符桿 X 座標 (位於符頭右側 +6px)
+          const stemPositions = slots.map(slot => {
+            let lowestStep = 99;
+            slot.notes.forEach(n => {
+              const p = DRUM_PARTS.find(dp => dp.id === n.drum);
+              if (p && p.staffStep < lowestStep) lowestStep = p.staffStep;
+            });
+            const bottomY = stepToY(lowestStep === 99 ? 5 : lowestStep);
+            return {
+              slot,
+              stemX: slot.x + 6,
+              bottomY
+            };
+          });
+
+          // 繪製每個時間點的垂直符桿 (Stem)
+          stemPositions.forEach(({ slot, stemX, bottomY }) => {
+            const allPerfect = slot.notes.every(n => n.status === 'perfect');
+            const anyMiss = slot.notes.some(n => n.status === 'miss');
+            ctx.strokeStyle = allPerfect ? '#10b981' : (anyMiss ? '#ef4444' : '#1e293b');
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.moveTo(stemX, bottomY);
+            ctx.lineTo(stemX, stemTopY);
+            ctx.stroke();
+          });
+
+          // 若同一拍內有 2 個以上音符，用水平粗橫樑 (Beam) 將符桿連在一起！
+          if (stemPositions.length >= 2) {
+            const leftStemX = stemPositions[0].stemX;
+            const rightStemX = stemPositions[stemPositions.length - 1].stemX;
+
+            ctx.fillStyle = '#1e293b';
+            // 第一層主橫樑 (八分音符 / 十六分音符共用)
+            ctx.fillRect(leftStemX - 0.8, stemTopY, rightStemX - leftStemX + 1.6, 4.5);
+
+            // 若該拍包含十六分音符，繪製第二層橫樑 (局部或全拍雙橫樑)
+            if (hasSixteenth) {
+              for (let i = 0; i < stemPositions.length; i++) {
+                const curr = stemPositions[i];
+                const currFrac = Math.round((curr.slot.beat - Math.floor(curr.slot.beat)) * 100);
+                const isCurr16th = currFrac === 25 || currFrac === 75;
+                if (!isCurr16th) continue;
+
+                const prev = stemPositions[i - 1];
+                const next = stemPositions[i + 1];
+                if (prev && (curr.slot.beat - prev.slot.beat) <= 0.26) {
+                  ctx.fillRect(prev.stemX - 0.8, stemTopY + 7, curr.stemX - prev.stemX + 1.6, 4.2);
+                } else if (next && (next.slot.beat - curr.slot.beat) <= 0.26) {
+                  ctx.fillRect(curr.stemX - 0.8, stemTopY + 7, next.stemX - curr.stemX + 1.6, 4.2);
+                } else {
+                  // 單獨十六分音符短副樑 (Broken Beam)
+                  const stubDir = prev ? -12 : 12;
+                  const startX = stubDir < 0 ? curr.stemX + stubDir : curr.stemX;
+                  ctx.fillRect(startX, stemTopY + 7, Math.abs(stubDir), 4.2);
+                }
+              }
+            }
+          } else if (stemPositions.length === 1) {
+            // 單獨一拍內的孤立非四分音符（例如只有反拍一個八分音符），補上單條小符尾旗幟
+            const single = stemPositions[0];
+            const frac = Math.round((single.slot.beat - Math.floor(single.slot.beat)) * 100);
+            if (frac !== 0) {
+              ctx.strokeStyle = '#1e293b';
+              ctx.lineWidth = 2.2;
+              ctx.beginPath();
+              ctx.moveTo(single.stemX, stemTopY);
+              ctx.quadraticCurveTo(single.stemX + 9, stemTopY + 6, single.stemX + 7, stemTopY + 15);
+              ctx.stroke();
+            }
+          }
+
+          // 繪製該拍內每個時間點的音符符頭 (Noteheads)
+          for (const slot of slots) {
+            const isTargetNow = activePracticeBeat !== null && Math.abs(slot.beat - activePracticeBeat) < 0.01;
+
+            for (const note of slot.notes) {
+              const part = DRUM_PARTS.find(p => p.id === note.drum) || DRUM_PARTS[0];
+              const y = stepToY(part.staffStep);
+
+              let noteColor = '#0f172a';
+              if (note.status === 'perfect') noteColor = '#10b981';
+              else if (note.status === 'good') noteColor = '#f59e0b';
+              else if (note.status === 'miss') noteColor = '#ef4444';
+              else if (note.status === 'skipped') noteColor = '#cbd5e1';
+              else if (isTargetNow) noteColor = '#0284c7';
+
+              // 練習模式下，當前待打擊音符加上水藍色提示光圈與鼓件名稱標籤
+              if (isTargetNow && note.status === 'pending') {
+                ctx.save();
+                ctx.strokeStyle = 'rgba(2, 132, 199, 0.45)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(slot.x, y, 12 + Math.sin(now / 140) * 2, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.fillStyle = '#0369a1';
+                ctx.font = 'bold 10px JetBrains Mono, monospace';
+                ctx.fillText(part.short, slot.x + 13, y + 3.5);
+                ctx.restore();
+              }
+
+              // 上加一線 / 上加二線短輔助線 (Ledger Line)
+              if (part.staffStep >= 10) {
+                ctx.strokeStyle = '#64748b';
+                ctx.lineWidth = 1.4;
+                ctx.beginPath();
+                ctx.moveTo(slot.x - 11, y);
+                ctx.lineTo(slot.x + 11, y);
+                ctx.stroke();
+              }
+
+              ctx.save();
+              ctx.strokeStyle = noteColor;
+              ctx.fillStyle = noteColor;
+              ctx.lineWidth = 2.2;
+
+              if (part.headType === 'normal') {
+                ctx.beginPath();
+                ctx.ellipse(slot.x, y, 6.8, 5.0, -0.32, 0, Math.PI * 2);
+                ctx.fill();
+              } else {
+                // 鈸片類 (Hi-Hat, Open HH, Ride, Crash) 使用 × 符頭；Crash 僅繪製純 × 不加外圈
+                const r = 5.6;
+                ctx.beginPath();
+                ctx.moveTo(slot.x - r, y - r);
+                ctx.lineTo(slot.x + r, y + r);
+                ctx.moveTo(slot.x + r, y - r);
+                ctx.lineTo(slot.x - r, y + r);
+                ctx.stroke();
+
+                if (part.headType === 'openx') {
+                  ctx.beginPath();
+                  ctx.arc(slot.x, y, 8.2, 0, Math.PI * 2);
+                  ctx.stroke();
+                } else if (part.headType === 'ride') {
+                  // 疊音鈸 (Ride) 加上菱形鈸心外框區別
+                  ctx.beginPath();
+                  ctx.moveTo(slot.x, y - 8.5);
+                  ctx.lineTo(slot.x + 8.5, y);
+                  ctx.lineTo(slot.x, y + 8.5);
+                  ctx.lineTo(slot.x - 8.5, y);
+                  ctx.closePath();
+                  ctx.stroke();
+                }
+              }
+              ctx.restore();
+            }
+          }
+        }
+      }
+
+      // 6. 繪製判定飄字特效 (PERFECT / GOOD / MISS)
+      floatingEffects = floatingEffects.filter(ef => now - ef.createdAt < 650);
+      for (const ef of floatingEffects) {
+        const age = (now - ef.createdAt) / 650;
+        const y = stepToY(ef.staffStep) - 18 - age * 28;
+        ctx.save();
+        ctx.globalAlpha = 1 - age;
+        ctx.fillStyle = ef.color;
+        ctx.font = '800 13px Inter, sans-serif';
+        ctx.fillText(ef.text, hitLineX - 24, y);
+        ctx.restore();
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 7. UI 互動控制、虛擬鼓墊生成與快捷鍵
+     * ============================================================================
+     */
+    function showToast(msg) {
+      const box = document.getElementById('toast-box');
+      box.textContent = msg;
+      box.classList.remove('opacity-0');
+      clearTimeout(box._timer);
+      box._timer = setTimeout(() => box.classList.add('opacity-0'), 3200);
+    }
+
+    function renderDrumPadsUI() {
+      const grid = document.getElementById('drum-pads-grid');
+      grid.innerHTML = '';
+
+      DRUM_PARTS.forEach(part => {
+        const boundNote = drumIdToNote[part.id];
+        const btn = document.createElement('button');
+        btn.id = `pad-${part.id}`;
+        btn.type = 'button';
+        btn.style.color = part.color;
+        btn.className = 'group relative flex flex-col justify-between p-3 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-slate-700/90 transition-all duration-75 text-left active:scale-95';
+        btn.innerHTML = `
+          <div class="flex items-center justify-between w-full mb-1.5">
+            <span class="text-xs font-extrabold tracking-wider uppercase" style="color: ${part.color}">${part.short}</span>
+            <span class="mono text-[11px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-700">${part.keyLabel}</span>
+          </div>
+          <div class="text-xs font-semibold text-slate-100 truncate">${part.name}</div>
+          <div class="mono text-[11px] text-slate-400 mt-1">MIDI: ${midiNoteToName(boundNote)}</div>
+        `;
+
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          triggerDrumHit(part.id, 110, `螢幕點擊 ${part.short}`);
+        });
+
+        grid.appendChild(btn);
+      });
+    }
+
+    function renderMidiMappingModal() {
+      const list = document.getElementById('midi-mapping-list');
+      list.innerHTML = '';
+
+      DRUM_PARTS.forEach(part => {
+        const isLearning = learningDrumId === part.id;
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between p-2.5 rounded-xl bg-slate-800/80 border border-slate-700';
+        row.innerHTML = `
+          <div>
+            <div class="text-sm font-bold text-slate-100">${part.name}</div>
+            <div class="mono text-xs text-cyan-400">目前綁定：${midiNoteToName(drumIdToNote[part.id])}</div>
+          </div>
+          <button type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+            isLearning
+              ? 'bg-amber-500 text-slate-950 animate-pulse'
+              : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+          }">
+            ${isLearning ? '🎹 請按 MIDI 琴鍵...' : '點擊學習'}
+          </button>
+        `;
+        row.querySelector('button').addEventListener('click', () => {
+          learningDrumId = isLearning ? null : part.id;
+          renderMidiMappingModal();
+        });
+        list.appendChild(row);
+      });
+    }
+
+    function updatePlayButtonUI() {
+      const btn = document.getElementById('btn-play');
+      const icon = document.getElementById('play-icon');
+      const text = document.getElementById('play-text');
+      if (isPlaying) {
+        btn.className = 'px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-sm shadow-lg shadow-amber-600/20 transition flex items-center gap-2';
+        icon.textContent = '⏸';
+        text.textContent = gameMode === 'practice' ? '暫停學習' : '暫停演奏';
+      } else {
+        btn.className = 'px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-600/20 transition flex items-center gap-2';
+        icon.textContent = '▶';
+        text.textContent = gameMode === 'practice' ? '開始學習' : '開始演奏';
+      }
+    }
+
+    function setGameMode(mode) {
+      gameMode = mode;
+      const btnPractice = document.getElementById('btn-mode-practice');
+      const btnPerform = document.getElementById('btn-mode-perform');
+
+      if (mode === 'practice') {
+        btnPractice.className = 'px-3 py-1.5 rounded-lg bg-cyan-600 text-white font-bold text-xs transition shadow';
+        btnPerform.className = 'px-3 py-1.5 rounded-lg text-slate-400 hover:text-white font-semibold text-xs transition';
+        showToast('🎓 已切換至「練習模式」：打對當前拍點的所有音符才會前進！');
+      } else {
+        btnPerform.className = 'px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-bold text-xs transition shadow';
+        btnPractice.className = 'px-3 py-1.5 rounded-lg text-slate-400 hover:text-white font-semibold text-xs transition';
+        showToast('🎸 已切換至「表演模式」：跟著節拍器即時滾動演奏！');
+      }
+
+      isPlaying = false;
+      resetPracticeState();
+      updatePlayButtonUI();
+    }
+
+    document.getElementById('btn-mode-practice').addEventListener('click', () => setGameMode('practice'));
+    document.getElementById('btn-mode-perform').addEventListener('click', () => setGameMode('perform'));
+
+    // =========================================================================
+    // 全曲總覽時間軸拖曳拉動 & A-B 循環區間選取互動
+    // =========================================================================
+    let isDraggingTimeline = false;
+    let dragMode = 'scrub'; // 'scrub' (拖曳游標瀏覽) | 'selectAB' (按住 Shift 或右鍵框選 A-B 區間)
+    let dragStartBeat = 0;
+
+    function clientXToBeat(clientX) {
+      const rect = timelineCanvas.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const totalBeats = currentSong ? currentSong.measures * 4 : 16;
+      return ratio * totalBeats;
+    }
+
+    timelineCanvas.addEventListener('pointerdown', (e) => {
+      if (!currentSong) return;
+      timelineCanvas.setPointerCapture(e.pointerId);
+      isDraggingTimeline = true;
+      const clickedBeat = clientXToBeat(e.clientX);
+
+      // 若按住 Shift 鍵或使用滑鼠右鍵/中鍵，則框選 A-B 循環區間；一般左鍵拖曳則自由拉動時間軸瀏覽
+      if (e.shiftKey || e.button === 2) {
+        dragMode = 'selectAB';
+        dragStartBeat = Math.floor(clickedBeat / 4) * 4;
+        abLoopEnabled = true;
+        loopStartBeat = dragStartBeat;
+        loopEndBeat = Math.min(currentSong.measures * 4, dragStartBeat + 4);
+        updateAbLoopControlsUI();
+      } else {
+        dragMode = 'scrub';
+        seekToBeat(clickedBeat);
+      }
+    });
+
+    timelineCanvas.addEventListener('pointermove', (e) => {
+      if (!isDraggingTimeline || !currentSong) return;
+      const moveBeat = clientXToBeat(e.clientX);
+      if (dragMode === 'selectAB') {
+        const totalBeats = currentSong.measures * 4;
+        const mStart = Math.floor(Math.min(dragStartBeat, moveBeat) / 4) * 4;
+        const mEnd = Math.min(totalBeats, (Math.floor(Math.max(dragStartBeat, moveBeat) / 4) + 1) * 4);
+        loopStartBeat = Math.max(0, mStart);
+        loopEndBeat = Math.max(loopStartBeat + 4, mEnd);
+        updateAbLoopControlsUI();
+      } else {
+        seekToBeat(moveBeat);
+      }
+    });
+
+    timelineCanvas.addEventListener('pointerup', (e) => {
+      if (!isDraggingTimeline) return;
+      isDraggingTimeline = false;
+      timelineCanvas.releasePointerCapture(e.pointerId);
+      if (dragMode === 'selectAB') {
+        resetPracticeState();
+        showToast(`🔁 已設定循環範圍：第 ${loopStartBeat / 4 + 1} 小節 至 第 ${loopEndBeat / 4} 小節`);
+      }
+    });
+
+    timelineCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // 允許直接在主五線譜畫布上用滑鼠橫向拖曳捲動樂譜
+    let isDraggingSheet = false;
+    let sheetDragStartX = 0;
+    let sheetDragStartBeat = 0;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (!currentSong) return;
+      isDraggingSheet = true;
+      sheetDragStartX = e.clientX;
+      sheetDragStartBeat = currentBeat;
+      canvas.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!isDraggingSheet || !currentSong) return;
+      const dx = e.clientX - sheetDragStartX;
+      const width = canvas.width / (window.devicePixelRatio || 1);
+      const pixelsPerBeat = Math.max(95, Math.min(145, width / 6.5)) * sheetZoomScale;
+      const newBeat = sheetDragStartBeat - dx / pixelsPerBeat;
+      seekToBeat(newBeat);
+    });
+
+    window.addEventListener('pointerup', () => {
+      if (isDraggingSheet) {
+        isDraggingSheet = false;
+        canvas.style.cursor = 'grab';
+      }
+    });
+    canvas.style.cursor = 'grab';
+
+    // 主五線譜滑鼠滾輪事件：直接滾輪縮放拍距（按住 Shift 滾輪則橫向捲動樂譜）
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        seekToBeat(currentBeat + delta * 0.004);
+      } else {
+        const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+        setSheetZoom(sheetZoomScale * zoomFactor);
+      }
+    }, { passive: false });
+
+    // 底部時間軸滑鼠滾輪事件：滾輪放大/縮小時間軸，按住 Shift 則橫向捲動
+    const tlScrollWrapper = document.getElementById('timeline-scroll-wrapper');
+    tlScrollWrapper.addEventListener('wheel', (e) => {
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        // 允許橫向捲動
+        if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) {
+          e.preventDefault();
+          tlScrollWrapper.scrollLeft += e.deltaY;
+        }
+        return;
+      }
+      e.preventDefault();
+      const rect = timelineCanvas.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+      const zoomFactor = e.deltaY < 0 ? 1.25 : 0.8;
+      setTimelineZoom(timelineZoomScale * zoomFactor, ratio);
+    }, { passive: false });
+
+    // 主五線譜縮放滑桿與按鈕
+    document.getElementById('sheet-zoom-slider').addEventListener('input', (e) => {
+      setSheetZoom(parseInt(e.target.value, 10) / 100);
+    });
+    document.getElementById('btn-sheet-zoom-out').addEventListener('click', () => setSheetZoom(sheetZoomScale - 0.15));
+    document.getElementById('btn-sheet-zoom-in').addEventListener('click', () => setSheetZoom(sheetZoomScale + 0.15));
+
+    // 時間軸縮放滑桿與按鈕
+    document.getElementById('tl-zoom-slider').addEventListener('input', (e) => {
+      setTimelineZoom(parseInt(e.target.value, 10) / 100);
+    });
+    document.getElementById('btn-tl-zoom-out').addEventListener('click', () => setTimelineZoom(timelineZoomScale - 0.5));
+    document.getElementById('btn-tl-zoom-in').addEventListener('click', () => setTimelineZoom(timelineZoomScale + 0.5));
+
+    // A-B 循環區間控制項事件
+    document.getElementById('btn-ab-toggle').addEventListener('click', () => {
+      abLoopEnabled = !abLoopEnabled;
+      updateAbLoopControlsUI();
+      resetPracticeState();
+      showToast(abLoopEnabled ? `🔁 已開啟 A-B 區間循環（第 ${loopStartBeat / 4 + 1} 至 ${loopEndBeat / 4} 小節）` : '已關閉 A-B 區間循環');
+    });
+
+    document.getElementById('loop-start-select').addEventListener('change', (e) => {
+      loopStartBeat = parseInt(e.target.value, 10);
+      if (loopEndBeat <= loopStartBeat) {
+        loopEndBeat = Math.min(currentSong.measures * 4, loopStartBeat + 4);
+      }
+      abLoopEnabled = true;
+      updateAbLoopControlsUI();
+      resetPracticeState();
+    });
+
+    document.getElementById('loop-end-select').addEventListener('change', (e) => {
+      loopEndBeat = parseInt(e.target.value, 10);
+      if (loopStartBeat >= loopEndBeat) {
+        loopStartBeat = Math.max(0, loopEndBeat - 4);
+      }
+      abLoopEnabled = true;
+      updateAbLoopControlsUI();
+      resetPracticeState();
+    });
+
+    document.getElementById('btn-ab-reset').addEventListener('click', () => {
+      if (!currentSong) return;
+      abLoopEnabled = false;
+      loopStartBeat = 0;
+      loopEndBeat = currentSong.measures * 4;
+      updateAbLoopControlsUI();
+      resetPracticeState();
+      showToast('已重設為全曲範圍');
+    });
+
+    document.getElementById('btn-play').addEventListener('click', () => {
+      ensureAudioContext();
+      if (!isPlaying) {
+        if (gameMode === 'perform' && currentSong && currentBeat > currentSong.measures * 4) {
+          resetPracticeState();
+        }
+        isPlaying = true;
+        lastFrameTime = performance.now();
+      } else {
+        isPlaying = false;
+      }
+      updatePlayButtonUI();
+    });
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      ensureAudioContext();
+      resetPracticeState();
+      isPlaying = true;
+      lastFrameTime = performance.now();
+      updatePlayButtonUI();
+    });
+
+    document.getElementById('btn-loop').addEventListener('click', (e) => {
+      isLooping = !isLooping;
+      e.currentTarget.textContent = `🔁 循環：${isLooping ? '開' : '關'}`;
+      e.currentTarget.className = isLooping
+        ? 'px-3.5 py-2 rounded-xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition'
+        : 'px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 text-sm font-medium transition';
+    });
+
+    document.getElementById('btn-metronome').addEventListener('click', (e) => {
+      isMetronomeOn = !isMetronomeOn;
+      e.currentTarget.textContent = `⏱️ 節拍器：${isMetronomeOn ? '開' : '關'}`;
+      e.currentTarget.className = isMetronomeOn
+        ? 'px-3.5 py-2 rounded-xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition'
+        : 'px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 text-sm font-medium transition';
+    });
+
+    document.getElementById('bpm-slider').addEventListener('input', (e) => {
+      speedPercent = parseInt(e.target.value, 10);
+      updateSongBanner();
+    });
+
+    document.getElementById('room-slider').addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10);
+      roomAmbienceAmount = val / 100;
+      document.getElementById('room-display').textContent = `${val}%`;
+      if (roomSendGain && audioCtx) {
+        roomSendGain.gain.setTargetAtTime(roomAmbienceAmount * 0.85, audioCtx.currentTime, 0.02);
+      }
+    });
+
+    document.getElementById('song-select').addEventListener('change', (e) => {
+      const key = e.target.value;
+      if (BUILTIN_SONGS[key]) {
+        loadSong(BUILTIN_SONGS[key]);
+        showToast(`已載入：${BUILTIN_SONGS[key].title}`);
+      }
+    });
+
+    // 匯入外部 .mid 檔案
+    document.getElementById('midi-file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const buffer = await file.arrayBuffer();
+        const parsedSong = parseStandardMidiFile(buffer, file.name);
+        if (parsedSong.notes.length === 0) {
+          showToast('⚠️ 此 MIDI 檔案內未偵測到打擊樂音符。');
+          return;
+        }
+        loadSong(parsedSong);
+        showToast(`✅ 成功匯入「${file.name}」，共解析 ${parsedSong.notes.length} 個鼓點！`);
+      } catch (err) {
+        showToast(`❌ MIDI 解析失敗：${err.message}`);
+      }
+      e.target.value = '';
+    });
+
+    // MIDI Learn 視窗控制
+    document.getElementById('btn-midi-learn').addEventListener('click', () => {
+      learningDrumId = null;
+      renderMidiMappingModal();
+      const modal = document.getElementById('midi-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    });
+
+    function closeMidiModal() {
+      learningDrumId = null;
+      const modal = document.getElementById('midi-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    document.getElementById('btn-close-modal').addEventListener('click', closeMidiModal);
+    document.getElementById('btn-save-modal').addEventListener('click', closeMidiModal);
+    document.getElementById('btn-reset-map').addEventListener('click', () => {
+      resetDrumMapping();
+      learningDrumId = null;
+      renderMidiMappingModal();
+      renderDrumPadsUI();
+      showToast('已恢復標準 GM 鼓組預設鍵位');
+    });
+
+    // 重新掃描 MIDI 埠
+    document.getElementById('btn-rescan-midi').addEventListener('click', async () => {
+      if (!midiAccessObj) {
+        await initWebMIDI();
+      } else {
+        await refreshMidiPorts();
+      }
+      showToast('🔄 已重新掃描 MIDI 連接埠');
+    });
+
+    // 匯出單機版 HTML 檔案（繞過預覽視窗沙盒權限限制）
+    document.getElementById('btn-export-html').addEventListener('click', () => {
+      const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'DrumSight_Studio.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('⬇️ 已下載單機版 HTML，請用 Chrome / Edge 開啟獲得完整 MIDI 權限');
+    });
+
+    // 電腦鍵盤快捷鍵：空白鍵 (Space) 切換開始/暫停；B, F, J, K, U, R, T, G, H 模擬敲擊
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        if (document.activeElement && document.activeElement.tagName === 'BUTTON') {
+          document.activeElement.blur();
+        }
+        document.getElementById('btn-play').click();
+        return;
+      }
+
+      const pressedKey = e.key.toLowerCase();
+      const matchedPart = DRUM_PARTS.find(p => p.key === pressedKey);
+      if (matchedPart) {
+        e.preventDefault();
+        triggerDrumHit(matchedPart.id, 105, `電腦鍵盤 [${matchedPart.keyLabel}]`);
+      }
+    });
+
+    // 應用程式初始化
+    window.onload = function () {
+      resizeCanvas();
+      renderDrumPadsUI();
+      loadSong(BUILTIN_SONGS.rock8);
+      initWebMIDI();
+      requestAnimationFrame(renderLoop);
+    };
+  </script>
+</body>
+</html>
