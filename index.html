@@ -209,7 +209,7 @@
           <span>上加一線 <b class="font-mono">×</b>：Crash</span>
           <span>第五線上方間 <b class="font-mono">×</b>：Hi-Hat</span>
           <span>第五線 <b class="font-mono">×</b>：Ride</span>
-          <span>第五線/第四間/第二線 <b class="font-mono">●</b>：高/中/落地鼓</span>
+          <span>第四線/第四間/第二線 <b class="font-mono">●</b>：高/中/落地鼓</span>
           <span>第三線 <b class="font-mono">●</b>：Snare</span>
           <span>第一線 <b class="font-mono">●</b>：Kick</span>
         </div>
@@ -349,9 +349,9 @@
      * ============================================================================
      * 1. 核心鼓組定義與 GM MIDI 鍵位映射表 (完整 9 件式標準 5 鼓 3 鈸配置)
      * 鈸片位置保持不變 (9=第五線Ride, 10=第五線上方間Hi-Hat, 11=上加一線Crash)
-     * 鼓件位置整體上升一階：
+     * 鼓件位置：
      *  2=第一線(Kick), 4=第二線(Floor Tom), 6=第三線(Snare),
-     *  7=第四間(Mid Tom), 9=第五線(High Tom)
+     *  7=第四間(Mid Tom), 8=第四線(High Tom)
      * ============================================================================
      */
     const DRUM_PARTS = [
@@ -361,7 +361,7 @@
       { id: 'openhh',   name: '開放踩鈸 (Open HH)',  short: 'OHH',    defaultNote: 46, key: 'k', keyLabel: 'K 鍵',  staffStep: 10, headType: 'openx',  color: '#f97316' },
       { id: 'ride',     name: '疊音鈸 (Ride)',       short: 'RIDE',   defaultNote: 51, key: 'u', keyLabel: 'U 鍵',  staffStep: 9,  headType: 'ride',   color: '#06b6d4' },
       { id: 'crash',    name: '碎音鈸 (Crash)',      short: 'CRASH',  defaultNote: 49, key: 'r', keyLabel: 'R 鍵',  staffStep: 11, headType: 'crash',  color: '#10b981' },
-      { id: 'hightom',  name: '高音桶鼓 (High Tom)', short: 'HI-TOM', defaultNote: 50, key: 't', keyLabel: 'T 鍵',  staffStep: 9,  headType: 'normal', color: '#a855f7' },
+      { id: 'hightom',  name: '高音桶鼓 (High Tom)', short: 'HI-TOM', defaultNote: 50, key: 't', keyLabel: 'T 鍵',  staffStep: 8,  headType: 'normal', color: '#a855f7' },
       { id: 'midtom',   name: '中音桶鼓 (Mid Tom)',  short: 'MID-TOM',defaultNote: 48, key: 'g', keyLabel: 'G 鍵',  staffStep: 7,  headType: 'normal', color: '#8b5cf6' },
       { id: 'floortom', name: '落地鼓 (Floor Tom)',  short: 'FL-TOM', defaultNote: 45, key: 'h', keyLabel: 'H 鍵',  staffStep: 4,  headType: 'normal', color: '#ec4899' }
     ];
