@@ -1976,44 +1976,81 @@
     }
 
     function drawSheetMusic(now) {
-      const width = canvas.width / (window.devicePixelRatio || 1);
-      const height = canvas.height / (window.devicePixelRatio || 1);
+      const dpr = window.devicePixelRatio || 1;
+      const width = canvas.width / dpr;
+      const height = canvas.height / dpr;
 
       ctx.clearRect(0, 0, width, height);
 
-      // 五線譜幾何參數（套用使用者自由縮放比例 sheetZoomScale）
-      const hitLineX = Math.min(185, width * 0.25); // 左側判定線位置
+      // 五線譜幾何參數
+      const lineSpacing = 15;
+      const topLineY = Math.round(height * 0.42);
+      const hitLineX = Math.min(185, width * 0.22);
       const basePixelsPerBeat = Math.max(95, Math.min(145, width / 6.5));
       const pixelsPerBeat = basePixelsPerBeat * sheetZoomScale;
-      const lineSpacing = 15; // 五線譜相鄰兩線間距 (px)，半間距為 7.5px
-      const topLineY = height * 0.36; // 第五線 (最頂端線) 的 Y 座標
 
-      // 輔助函式：將 staffStep (0=第一線, 8=第五線, 9=上加一間, 10=上加二線) 轉換為 Y 座標
-      const stepToY = (step) => topLineY + (8 - step) * (lineSpacing / 2);
+      // 輔助函式：將 staffStep 轉換為畫布 Y 座標 (0 = 第一線下方間, 2 = 第一線, 10 = 第五線上方)
+      const stepToY = (step) => topLineY + (10 - step) * (lineSpacing / 2);
 
-      // 1. 繪製五線譜五條主線 (step = 0, 2, 4, 6, 8)
+      // 1. 繪製五條標準五線譜水平線
       ctx.strokeStyle = '#94a3b8';
       ctx.lineWidth = 1.4;
       for (let i = 0; i < 5; i++) {
         const y = topLineY + i * lineSpacing;
         ctx.beginPath();
-        ctx.moveTo(16, y);
-        ctx.lineTo(width - 16, y);
+        ctx.moveTo(24, y);
+        ctx.lineTo(width - 24, y);
         ctx.stroke();
       }
 
-      // 2. 繪製左側打擊樂譜號 (Neutral Percussion Clef 雙豎線) 與 4/4 拍號
+      // 2. 繪製左側中性打擊樂譜號 (Neutral Percussion Clef 兩條粗豎線) 與 4/4 拍號
       ctx.fillStyle = '#1e293b';
-      ctx.fillRect(28, topLineY + lineSpacing, 4.5, lineSpacing * 2);
-      ctx.fillRect(36, topLineY + lineSpacing, 4.5, lineSpacing * 2);
+      ctx.fillRect(36, topLineY + lineSpacing * 1.1, 4.5, lineSpacing * 1.8);
+      ctx.fillRect(45, topLineY + lineSpacing * 1.1, 4.5, lineSpacing * 1.8);
 
-      ctx.font = 'bold 21px Inter, sans-serif';
-      ctx.fillText('4', 52, topLineY + lineSpacing * 1.65);
-      ctx.fillText('4', 52, topLineY + lineSpacing * 3.65);
+      ctx.font = '800 22px Inter, sans-serif';
+      ctx.fillText('4', 58, topLineY + lineSpacing * 1.75);
+      ctx.fillText('4', 58, topLineY + lineSpacing * 3.75);
 
-      // 3. 繪製小節線 (Barlines) 與小節編號
+      // 3. 繪製小節線 (Barlines)、小節編號與八分音符拍點標示 (1 & 2 & 3 & 4 &)
       if (currentSong) {
         const totalBeats = currentSong.measures * 4;
+        const countLabels = ['1', '&', '2', '&', '3', '&', '4', '&'];
+        const countY = topLineY - 42; // 位於符桿橫樑 (topLineY - 30) 上方
+
+        // 繪製每一拍的正拍與反拍 (每 0.5 拍一個刻度)
+        for (let stepIdx = 0; stepIdx < totalBeats * 2; stepIdx++) {
+          const b = stepIdx * 0.5;
+          const x = hitLineX + (b - currentBeat) * pixelsPerBeat;
+          if (x < 75 || x > width + 40) continue;
+
+          const subIdx = stepIdx % 8;
+          const isDownbeat = subIdx % 2 === 0;
+          const label = countLabels[subIdx];
+
+          // 反拍 (&) 繪製極淡的細虛線輔助對齊
+          if (!isDownbeat) {
+            ctx.strokeStyle = 'rgba(99, 102, 241, 0.22)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 4]);
+            ctx.beginPath();
+            ctx.moveTo(x, topLineY - 4);
+            ctx.lineTo(x, topLineY + lineSpacing * 4 + 4);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
+          // 在音符上方標示 1 & 2 & 3 & 4 &
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.font = isDownbeat
+            ? '800 13px JetBrains Mono, monospace'
+            : '700 12px JetBrains Mono, monospace';
+          ctx.fillStyle = isDownbeat ? '#0f172a' : '#4f46e5';
+          ctx.fillText(label, x, countY);
+          ctx.restore();
+        }
+
         for (let b = 0; b <= totalBeats; b++) {
           const x = hitLineX + (b - currentBeat) * pixelsPerBeat;
           if (x < 75 || x > width + 40) continue;
@@ -2027,13 +2064,13 @@
             ctx.lineTo(x, topLineY + lineSpacing * 4);
             ctx.stroke();
 
-            // 小節號標籤
+            // 小節號標籤 (顯示在第一線下方左側，避免與上方 1 & 2 & 重疊)
             const measureNum = Math.floor(b / 4) + 1;
             ctx.fillStyle = '#475569';
-            ctx.font = 'bold 12px JetBrains Mono, monospace';
-            ctx.fillText(`M${measureNum}`, x + 5, topLineY - 26);
+            ctx.font = 'bold 11px JetBrains Mono, monospace';
+            ctx.fillText(`M${measureNum}`, x + 4, topLineY + lineSpacing * 4 + 16);
           } else {
-            // 拍點淡虛線輔助對齊
+            // 正拍淡虛線輔助對齊
             ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
@@ -2050,16 +2087,16 @@
       ctx.strokeStyle = gameMode === 'practice' ? '#0284c7' : '#6366f1';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(hitLineX, topLineY - 38);
-      ctx.lineTo(hitLineX, topLineY + lineSpacing * 4 + 38);
+      ctx.moveTo(hitLineX, topLineY - 54);
+      ctx.lineTo(hitLineX, topLineY + lineSpacing * 4 + 34);
       ctx.stroke();
 
       // 判定線頂部指示三角形
       ctx.fillStyle = gameMode === 'practice' ? '#0284c7' : '#6366f1';
       ctx.beginPath();
-      ctx.moveTo(hitLineX - 7, topLineY - 44);
-      ctx.lineTo(hitLineX + 7, topLineY - 44);
-      ctx.lineTo(hitLineX, topLineY - 34);
+      ctx.moveTo(hitLineX - 7, topLineY - 60);
+      ctx.lineTo(hitLineX + 7, topLineY - 60);
+      ctx.lineTo(hitLineX, topLineY - 50);
       ctx.closePath();
       ctx.fill();
 
@@ -2171,29 +2208,15 @@
 
                 const prev = stemPositions[i - 1];
                 const next = stemPositions[i + 1];
-                if (prev && (curr.slot.beat - prev.slot.beat) <= 0.26) {
-                  ctx.fillRect(prev.stemX - 0.8, stemTopY + 7, curr.stemX - prev.stemX + 1.6, 4.2);
-                } else if (next && (next.slot.beat - curr.slot.beat) <= 0.26) {
-                  ctx.fillRect(curr.stemX - 0.8, stemTopY + 7, next.stemX - curr.stemX + 1.6, 4.2);
+                const subBeamY = stemTopY + 7;
+                if (prev && Math.abs(curr.slot.beat - prev.slot.beat - 0.25) < 0.02) {
+                  ctx.fillRect(prev.stemX - 0.8, subBeamY, curr.stemX - prev.stemX + 1.6, 3.8);
+                } else if (next && Math.abs(next.slot.beat - curr.slot.beat - 0.25) < 0.02) {
+                  ctx.fillRect(curr.stemX - 0.8, subBeamY, next.stemX - curr.stemX + 1.6, 3.8);
                 } else {
-                  // 單獨十六分音符短副樑 (Broken Beam)
-                  const stubDir = prev ? -12 : 12;
-                  const startX = stubDir < 0 ? curr.stemX + stubDir : curr.stemX;
-                  ctx.fillRect(startX, stemTopY + 7, Math.abs(stubDir), 4.2);
+                  ctx.fillRect(curr.stemX - 9, subBeamY, 9.8, 3.8);
                 }
               }
-            }
-          } else if (stemPositions.length === 1) {
-            // 單獨一拍內的孤立非四分音符（例如只有反拍一個八分音符），補上單條小符尾旗幟
-            const single = stemPositions[0];
-            const frac = Math.round((single.slot.beat - Math.floor(single.slot.beat)) * 100);
-            if (frac !== 0) {
-              ctx.strokeStyle = '#1e293b';
-              ctx.lineWidth = 2.2;
-              ctx.beginPath();
-              ctx.moveTo(single.stemX, stemTopY);
-              ctx.quadraticCurveTo(single.stemX + 9, stemTopY + 6, single.stemX + 7, stemTopY + 15);
-              ctx.stroke();
             }
           }
 
