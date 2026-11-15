@@ -84,66 +84,98 @@
   <!-- 主工作區 -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-4 flex flex-col gap-4">
 
-    <!-- 曲目選擇、匯入 MIDI 與播放控制列 -->
-    <section class="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 shadow-xl flex flex-wrap items-center justify-between gap-4">
+    <!-- 曲目選擇、雲端譜庫、匯入 MIDI 與播放控制列 -->
+    <section class="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 shadow-xl flex flex-col gap-3">
       
-      <!-- 曲目與檔案匯入 -->
-      <div class="flex flex-wrap items-center gap-2.5">
-        <select id="song-select" class="bg-slate-800 border border-slate-700 text-slate-100 text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500">
-          <option value="rock8">曲目 1：基礎八分音符搖滾 (8-Beat Rock)</option>
-          <option value="funk">曲目 2：放克切分與小鼓鬼音 (Funk Groove)</option>
-          <option value="fill">曲目 3：十六分音符過門與碎音鈸 (Fill & Crash)</option>
-        </select>
+      <!-- 第一排：內建曲目 + GitHub 雲端譜庫 + 本地匯入 -->
+      <div class="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-800/80">
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="song-select" class="bg-slate-800 border border-slate-700 text-slate-100 text-sm rounded-xl px-3 py-2 max-w-[260px] focus:outline-none focus:border-indigo-500">
+            <optgroup label="🎼 內建基礎練習曲">
+              <option value="rock8">內建 1：基礎八分音符搖滾 (8-Beat Rock)</option>
+              <option value="funk">內建 2：放克切分與小鼓鬼音 (Funk Groove)</option>
+              <option value="fill">內建 3：十六分音符過門與碎音鈸 (Fill & Crash)</option>
+            </optgroup>
+            <optgroup id="local-songs-optgroup" label="💻 本地匯入的 MIDI 曲目" class="hidden"></optgroup>
+          </select>
 
-        <label class="cursor-pointer px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium text-slate-200 transition flex items-center gap-2">
-          <span>📂 匯入 .mid 檔</span>
-          <input type="file" id="midi-file-input" accept=".mid,.midi" class="hidden" />
-        </label>
-      </div>
-
-      <!-- 播放控制按鈕 -->
-      <div class="flex flex-wrap items-center gap-2">
-        <!-- 練習模式 vs 表演模式切換 -->
-        <div class="flex items-center bg-slate-950/90 p-1 rounded-xl border border-slate-700">
-          <button id="btn-mode-practice" class="px-3 py-1.5 rounded-lg bg-cyan-600 text-white font-bold text-xs transition shadow" title="必須完整打對當前時間點的所有音符，樂譜才會前進">
-            🎓 練習模式 (等打對)
-          </button>
-          <button id="btn-mode-perform" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white font-semibold text-xs transition" title="隨節拍器即時滾動演奏並計算準確率">
-            🎸 表演模式 (即時)
-          </button>
-        </div>
-        <button id="btn-play" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-600/20 transition flex items-center gap-2" title="快捷鍵：空白鍵 (Space)">
-          <span id="play-icon">▶</span>
-          <span id="play-text">開始練習</span>
-          <span class="mono text-[11px] px-1.5 py-0.5 rounded bg-black/25 text-white/90">Space</span>
-        </button>
-
-        <button id="btn-restart" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm font-medium transition">
-          ⏮ 重頭開始
-        </button>
-
-        <button id="btn-loop" class="px-3.5 py-2 rounded-xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition" data-active="true">
-          🔁 循環：開
-        </button>
-
-        <button id="btn-metronome" class="px-3.5 py-2 rounded-xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition" data-active="true">
-          ⏱️ 節拍器：開
-        </button>
-      </div>
-
-      <!-- 速度 (BPM) 調整 -->
-      <div class="flex flex-wrap items-center gap-3">
-        <div class="flex items-center gap-2.5 bg-slate-800/70 px-3.5 py-1.5 rounded-xl border border-slate-700/80">
-          <span class="text-xs text-slate-400 font-medium">速度</span>
-          <input type="range" id="bpm-slider" min="50" max="130" value="100" class="w-20 sm:w-24 accent-indigo-500 cursor-pointer" />
-          <span id="bpm-display" class="mono text-xs sm:text-sm font-bold text-cyan-400 w-24 text-right">100% (100)</span>
+          <label class="cursor-pointer px-3.5 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-sm font-medium text-indigo-100 transition flex items-center gap-1.5" title="可單選或多選電腦本機的 .mid 套譜檔案（也支援直接拖曳檔案進視窗）">
+            <span>📂 本地匯入 .mid</span>
+            <input type="file" id="midi-file-input" accept=".mid,.midi" multiple class="hidden" />
+          </label>
         </div>
 
-        <!-- 錄音室空間感 (Room Ambience) 調整 -->
-        <div class="flex items-center gap-2.5 bg-slate-800/70 px-3.5 py-1.5 rounded-xl border border-slate-700/80" title="調整原聲錄音室房間麥克風 (Room Mic) 殘響比例">
-          <span class="text-xs text-amber-300/90 font-medium">🎙️ 空間感</span>
-          <input type="range" id="room-slider" min="0" max="100" value="45" class="w-16 sm:w-20 accent-amber-400 cursor-pointer" />
-          <span id="room-display" class="mono text-xs font-bold text-amber-300 w-9 text-right">45%</span>
+        <!-- GitHub 雲端譜庫同步區 -->
+        <div class="flex flex-wrap items-center gap-2 bg-slate-950/75 px-3 py-1.5 rounded-xl border border-slate-800">
+          <span class="text-xs font-bold text-cyan-300 flex items-center gap-1">☁️ 雲端譜庫:</span>
+          <select id="cloud-song-select" class="bg-slate-800 border border-slate-700 text-slate-100 text-xs rounded-lg px-2.5 py-1.5 min-w-[190px] max-w-[260px] focus:outline-none focus:border-cyan-500">
+            <option value="">正在讀取 wu1008mon/DrumSight-Studio...</option>
+          </select>
+          <button id="btn-load-cloud-song" type="button" class="px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition">
+            載入曲目
+          </button>
+          <button id="btn-refresh-cloud" type="button" class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 transition" title="重新從 GitHub 抓取最新上傳的 .mid 檔案">
+            🔄
+          </button>
+          <button id="btn-cloud-config" type="button" class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-400 hover:text-white transition" title="設定 GitHub 倉庫路徑">
+            ⚙️
+          </button>
+        </div>
+      </div>
+
+      <!-- 第二排：模式切換、播放控制與音量/速度調整 -->
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <!-- 播放控制按鈕 -->
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- 練習模式 vs 表演模式切換 -->
+          <div class="flex items-center bg-slate-950/90 p-1 rounded-xl border border-slate-700">
+            <button id="btn-mode-practice" class="px-3 py-1.5 rounded-lg bg-cyan-600 text-white font-bold text-xs transition shadow" title="必須完整打對當前時間點的所有音符，樂譜才會前進">
+              🎓 練習模式 (等打對)
+            </button>
+            <button id="btn-mode-perform" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white font-semibold text-xs transition" title="隨節拍器與 GM 伴奏即時滾動演奏並計算準確率">
+              🎸 表演模式 (即時)
+            </button>
+          </div>
+          <button id="btn-play" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-600/20 transition flex items-center gap-2" title="快捷鍵：空白鍵 (Space)">
+            <span id="play-icon">▶</span>
+            <span id="play-text">開始練習</span>
+            <span class="mono text-[11px] px-1.5 py-0.5 rounded bg-black/25 text-white/90">Space</span>
+          </button>
+
+          <button id="btn-restart" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm font-medium transition">
+            ⏮ 重頭開始
+          </button>
+
+          <button id="btn-loop" class="px-3.5 py-2 rounded-xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition" data-active="true">
+            🔁 循環：開
+          </button>
+
+          <button id="btn-metronome" class="px-3.5 py-2 rounded-xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition" data-active="true">
+            ⏱️ 節拍器：開
+          </button>
+        </div>
+
+        <!-- 速度 (BPM)、GM 伴奏音量與空間感調整 -->
+        <div class="flex flex-wrap items-center gap-2.5">
+          <div class="flex items-center gap-2 bg-slate-800/70 px-3 py-1.5 rounded-xl border border-slate-700/80">
+            <span class="text-xs text-slate-400 font-medium">速度</span>
+            <input type="range" id="bpm-slider" min="50" max="130" value="100" class="w-16 sm:w-20 accent-indigo-500 cursor-pointer" />
+            <span id="bpm-display" class="mono text-xs font-bold text-cyan-400 w-20 text-right">100% (100)</span>
+          </div>
+
+          <!-- GM 背景伴奏音量 (套譜 MIDI 非鼓組軌道) -->
+          <div class="flex items-center gap-2 bg-slate-800/70 px-3 py-1.5 rounded-xl border border-slate-700/80" title="調整多軌套譜 MIDI 的背景樂器伴奏 (GM 音源) 音量">
+            <span class="text-xs text-emerald-300 font-medium">🎹 伴奏</span>
+            <input type="range" id="backing-slider" min="0" max="100" value="75" class="w-16 sm:w-20 accent-emerald-400 cursor-pointer" />
+            <span id="backing-display" class="mono text-xs font-bold text-emerald-300 w-8 text-right">75%</span>
+          </div>
+
+          <!-- 錄音室空間感 (Room Ambience) 調整 -->
+          <div class="flex items-center gap-2 bg-slate-800/70 px-3 py-1.5 rounded-xl border border-slate-700/80" title="調整原聲錄音室房間麥克風 (Room Mic) 殘響比例">
+            <span class="text-xs text-amber-300/90 font-medium">🎙️ 空間</span>
+            <input type="range" id="room-slider" min="0" max="100" value="45" class="w-14 sm:w-16 accent-amber-400 cursor-pointer" />
+            <span id="room-display" class="mono text-xs font-bold text-amber-300 w-8 text-right">45%</span>
+          </div>
         </div>
       </div>
     </section>
@@ -275,6 +307,36 @@
       <div class="mt-5 pt-3 border-t border-slate-800 flex justify-between">
         <button id="btn-reset-map" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">恢復預設 GM 鼓組鍵位</button>
         <button id="btn-save-modal" class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white">完成設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GitHub 雲端譜庫設定視窗 (Modal) -->
+  <div id="cloud-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+        <h3 class="text-base font-bold text-white">☁️ GitHub 雲端譜庫路徑設定</h3>
+        <button id="btn-close-cloud-modal" class="text-slate-400 hover:text-white text-lg font-bold px-2">✕</button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <p class="text-slate-400 leading-relaxed">
+          只要將 <code class="text-cyan-300">.mid</code> 檔案上傳至你的 GitHub 專案（建議放在 <code class="text-cyan-300">songs/</code> 資料夾內，或直接放在專案根目錄），按下儲存後即可在下拉選單直接開啟！
+        </p>
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">GitHub 帳號名稱 (Owner)</label>
+          <input type="text" id="input-gh-owner" value="wu1008mon" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 mono" />
+        </div>
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">專案倉庫名稱 (Repository)</label>
+          <input type="text" id="input-gh-repo" value="DrumSight-Studio" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 mono" />
+        </div>
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">譜庫資料夾 (留空則同時掃描 songs/ 與根目錄)</label>
+          <input type="text" id="input-gh-folder" value="songs" placeholder="songs" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 mono" />
+        </div>
+      </div>
+      <div class="mt-5 pt-3 border-t border-slate-800 flex justify-end gap-2">
+        <button id="btn-save-cloud-modal" class="px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white">儲存並重新掃描雲端</button>
       </div>
     </div>
   </div>
@@ -791,6 +853,136 @@
 
     /**
      * ============================================================================
+     * 2B. General MIDI (GM 128 音色) 背景伴奏合成引擎
+     * 根據 MIDI 軌道中的 Program Change (0~127) 自動模擬對應原聲/電聲樂器
+     * ============================================================================
+     */
+    let backingVolume = 0.75;
+    let activeBackingVoices = [];
+
+    function getGmInstrumentProfile(program = 0) {
+      // GM 音色家族分類 (0-based Program Number: 0~127)
+      if (program >= 0 && program <= 7) {
+        // 鋼琴家族 (Piano)
+        return { name: 'Piano', wave1: 'triangle', wave2: 'sine', detune: 3, cutoff: 3400, attack: 0.008, decay: 0.45, sustain: 0.25, release: 0.25, gain: 0.24 };
+      } else if (program >= 8 && program <= 15) {
+        // 色彩打擊樂 (Chromatic Percussion: Vibraphone, Marimba)
+        return { name: 'Mallet', wave1: 'sine', wave2: 'triangle', detune: 0, cutoff: 4200, attack: 0.004, decay: 0.32, sustain: 0.05, release: 0.18, gain: 0.26 };
+      } else if (program >= 16 && program <= 23) {
+        // 風琴家族 (Organ)
+        return { name: 'Organ', wave1: 'sine', wave2: 'square', detune: 4, cutoff: 2600, attack: 0.015, decay: 0.1, sustain: 0.75, release: 0.12, gain: 0.18 };
+      } else if (program >= 24 && program <= 31) {
+        // 吉他家族 (24-28 尼龍/民謠/清音電吉他；29-31 過載/破音電吉他)
+        const isDistorted = program >= 29;
+        return {
+          name: isDistorted ? 'Overdrive Guitar' : 'Clean Guitar',
+          wave1: isDistorted ? 'sawtooth' : 'triangle',
+          wave2: isDistorted ? 'square' : 'sawtooth',
+          detune: isDistorted ? 8 : 2,
+          cutoff: isDistorted ? 2800 : 2500,
+          attack: 0.006,
+          decay: isDistorted ? 0.25 : 0.38,
+          sustain: isDistorted ? 0.65 : 0.22,
+          release: 0.16,
+          gain: isDistorted ? 0.15 : 0.22
+        };
+      } else if (program >= 32 && program <= 39) {
+        // 貝斯家族 (Acoustic / Finger / Pick / Slap / Synth Bass)
+        return { name: 'Bass', wave1: 'triangle', wave2: 'sawtooth', detune: 0, cutoff: 820, attack: 0.006, decay: 0.22, sustain: 0.55, release: 0.12, gain: 0.38 };
+      } else if (program >= 40 && program <= 55) {
+        // 弦樂與合唱人聲 (Strings & Ensemble)
+        return { name: 'Strings', wave1: 'sawtooth', wave2: 'sawtooth', detune: 9, cutoff: 2400, attack: 0.09, decay: 0.2, sustain: 0.75, release: 0.35, gain: 0.16 };
+      } else if (program >= 56 && program <= 79) {
+        // 銅管與木管樂器 (Brass, Sax, Reed, Flute)
+        return { name: 'Brass/Wind', wave1: 'sawtooth', wave2: 'triangle', detune: 4, cutoff: 3100, attack: 0.025, decay: 0.15, sustain: 0.7, release: 0.15, gain: 0.19 };
+      } else {
+        // 合成器主音 / 鋪底 / 音效 (Synth Lead / Pad / FX)
+        return { name: 'Synth', wave1: 'sawtooth', wave2: 'square', detune: 7, cutoff: 2900, attack: 0.02, decay: 0.25, sustain: 0.6, release: 0.22, gain: 0.17 };
+      }
+    }
+
+    function playGmBackingNote(midiNote, velocity, durationSec, program = 0) {
+      if (backingVolume <= 0.01) return;
+      try {
+        const ctx = ensureAudioContext();
+        const now = ctx.currentTime;
+        const prof = getGmInstrumentProfile(program);
+        const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
+        const velNorm = Math.max(0.1, Math.min(1.0, velocity / 127));
+        const dur = Math.max(0.08, Math.min(4.0, durationSec));
+
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        osc1.type = prof.wave1;
+        osc2.type = prof.wave2;
+        osc1.frequency.setValueAtTime(freq, now);
+        osc2.frequency.setValueAtTime(freq, now);
+        if (prof.detune) {
+          osc2.detune.setValueAtTime(prof.detune, now);
+        }
+
+        const osc2Gain = ctx.createGain();
+        osc2Gain.gain.setValueAtTime(0.45, now);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(Math.min(12000, prof.cutoff * (0.65 + velNorm * 0.6)), now);
+
+        const env = ctx.createGain();
+        const peakGain = prof.gain * velNorm * backingVolume;
+        const sustainGain = Math.max(0.001, peakGain * prof.sustain);
+
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.linearRampToValueAtTime(peakGain, now + prof.attack);
+        env.gain.exponentialRampToValueAtTime(sustainGain, now + prof.attack + prof.decay);
+        env.gain.setValueAtTime(sustainGain, now + dur);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + dur + prof.release);
+
+        osc1.connect(filter);
+        osc2.connect(osc2Gain);
+        osc2Gain.connect(filter);
+        filter.connect(env);
+        env.connect(masterBus || ctx.destination);
+
+        // 送出適量房間空間感讓伴奏與鼓組融合
+        if (roomSendGain) {
+          const wet = ctx.createGain();
+          wet.gain.setValueAtTime(0.28, now);
+          env.connect(wet);
+          wet.connect(roomSendGain);
+        }
+
+        const stopTime = now + dur + prof.release + 0.03;
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(stopTime);
+        osc2.stop(stopTime);
+
+        const voiceRecord = { osc1, osc2, env };
+        activeBackingVoices.push(voiceRecord);
+        osc1.onended = () => {
+          const idx = activeBackingVoices.indexOf(voiceRecord);
+          if (idx !== -1) activeBackingVoices.splice(idx, 1);
+        };
+      } catch (e) {}
+    }
+
+    function stopAllBackingVoices() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      activeBackingVoices.forEach(v => {
+        try {
+          v.env.gain.cancelScheduledValues(now);
+          v.env.gain.setValueAtTime(0.0001, now);
+          v.osc1.stop(now + 0.01);
+          v.osc2.stop(now + 0.01);
+        } catch (e) {}
+      });
+      activeBackingVoices = [];
+    }
+
+    /**
+     * ============================================================================
      * 3. 內建練習曲目與標準 MIDI (.mid) 二進位解析器
      * ============================================================================
      */
@@ -799,6 +991,7 @@
         title: '曲目 1：基礎八分音符搖滾 (8-Beat Rock)',
         bpm: 95,
         measures: 4,
+        backingNotes: [],
         notes: [
           // 第 1 小節
           { beat: 0.0, drum: 'crash' }, { beat: 0.0, drum: 'kick' },
@@ -840,6 +1033,7 @@
         title: '曲目 2：放克切分與小鼓鬼音 (Funk Groove)',
         bpm: 88,
         measures: 2,
+        backingNotes: [],
         notes: [
           // 第 1 小節
           { beat: 0.0, drum: 'crash' }, { beat: 0.0, drum: 'kick' },
@@ -868,6 +1062,7 @@
         title: '曲目 3：十六分音符全套桶鼓過門與碎音鈸 (Full Tom Fill & Crash)',
         bpm: 90,
         measures: 2,
+        backingNotes: [],
         notes: [
           // 第 1 小節：穩固節奏
           { beat: 0.0, drum: 'crash' }, { beat: 0.0, drum: 'kick' },
@@ -892,7 +1087,9 @@
 
     /**
      * 純 JavaScript Standard MIDI File (.mid) 二進位解析器
-     * 支援 SMF Format 0 與 Format 1，自動萃取打擊樂音符與 Tempo
+     * 支援 SMF Format 0 與 Format 1，自動分離：
+     *  1) Channel 10 (index 9) 打擊樂軌道 -> 轉換為爵士鼓五線譜
+     *  2) 其餘所有旋律/和弦軌道 (Channel 1~9, 11~16) + Program Change -> 轉換為 GM 背景伴奏軌
      */
     function parseStandardMidiFile(arrayBuffer, fileName) {
       const view = new DataView(arrayBuffer);
@@ -924,6 +1121,7 @@
 
       let detectedBpm = 100;
       const rawEvents = [];
+      const channelPrograms = new Array(16).fill(0); // 追蹤各 Channel 的 GM 音色編號
 
       for (let t = 0; t < numTracks; t++) {
         if (pos + 8 > view.byteLength) break;
@@ -969,12 +1167,24 @@
             const d1 = view.getUint8(pos++);
             const d2 = (cmd === 0xc0 || cmd === 0xd0) ? 0 : view.getUint8(pos++);
 
-            if (cmd === 0x90 && d2 > 0) {
+            if (cmd === 0xc0) {
+              // Program Change：記錄該軌道的 GM 音色
+              channelPrograms[channel] = d1;
+            } else if (cmd === 0x90 && d2 > 0) {
               rawEvents.push({
+                type: 'on',
                 beat: ticks / division,
                 channel,
                 note: d1,
-                velocity: d2
+                velocity: d2,
+                program: channelPrograms[channel]
+              });
+            } else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) {
+              rawEvents.push({
+                type: 'off',
+                beat: ticks / division,
+                channel,
+                note: d1
               });
             }
           }
@@ -982,15 +1192,57 @@
         pos = chunkEnd;
       }
 
-      // 優先篩選 Channel 9 (即 GM 標準第 10 軌鼓組)，若該 MIDI 檔沒有第 10 軌則使用全部音符
-      const ch10Events = rawEvents.filter(e => e.channel === 9);
-      const targetEvents = ch10Events.length > 0 ? ch10Events : rawEvents;
+      // 分離打擊樂軌道 (Channel 10 / index 9) 與其餘伴奏樂器軌道
+      const ch10OnEvents = rawEvents.filter(e => e.type === 'on' && e.channel === 9);
+      const nonDrumEvents = rawEvents.filter(e => e.channel !== 9);
 
-      // 將 MIDI Note 映射為我們的五線譜鼓件
+      // 若該 MIDI 檔完全沒有 Channel 10，則將所有 Note On 當成鼓組譜；否則只取 Channel 10 為鼓譜
+      const targetDrumEvents = ch10OnEvents.length > 0
+        ? ch10OnEvents
+        : rawEvents.filter(e => e.type === 'on');
+
+      // 配對非鼓組軌道的 Note On 與 Note Off 計算正確音符時值，建立 GM 背景伴奏軌
+      const backingNotes = [];
+      if (ch10OnEvents.length > 0 && nonDrumEvents.length > 0) {
+        const openNotesMap = new Map();
+        nonDrumEvents.sort((a, b) => a.beat - b.beat);
+        for (const ev of nonDrumEvents) {
+          const key = `${ev.channel}_${ev.note}`;
+          if (ev.type === 'on') {
+            openNotesMap.set(key, ev);
+          } else if (ev.type === 'off' && openNotesMap.has(key)) {
+            const startEv = openNotesMap.get(key);
+            openNotesMap.delete(key);
+            const durationBeats = Math.max(0.15, Math.min(8.0, ev.beat - startEv.beat));
+            backingNotes.push({
+              beat: startEv.beat,
+              durationBeats,
+              note: startEv.note,
+              velocity: startEv.velocity,
+              program: startEv.program,
+              played: false
+            });
+          }
+        }
+        // 處理未明確閉合的延音音符
+        for (const startEv of openNotesMap.values()) {
+          backingNotes.push({
+            beat: startEv.beat,
+            durationBeats: 0.5,
+            note: startEv.note,
+            velocity: startEv.velocity,
+            program: startEv.program,
+            played: false
+          });
+        }
+        backingNotes.sort((a, b) => a.beat - b.beat);
+      }
+
+      // 將鼓組 MIDI Note 映射為五線譜鼓件
       const mappedNotes = [];
       let maxBeat = 4;
 
-      targetEvents.forEach(ev => {
+      targetDrumEvents.forEach(ev => {
         // 量化至最近的 1/16 音符 (0.25 拍) 讓五線譜整齊清晰
         const quantizedBeat = Math.round(ev.beat * 4) / 4;
         if (quantizedBeat > maxBeat) maxBeat = quantizedBeat;
@@ -1016,14 +1268,20 @@
         }
       });
 
+      backingNotes.forEach(bn => {
+        if (bn.beat > maxBeat) maxBeat = bn.beat;
+      });
+
       mappedNotes.sort((a, b) => a.beat - b.beat);
       const totalMeasures = Math.max(1, Math.ceil((maxBeat + 0.25) / 4));
+      const trackBadge = backingNotes.length > 0 ? ` | 含 ${backingNotes.length} 音伴奏軌` : '';
 
       return {
-        title: `匯入樂譜：${fileName} (${detectedBpm} BPM)`,
+        title: `${fileName} (${detectedBpm} BPM${trackBadge})`,
         bpm: Math.max(40, Math.min(220, detectedBpm)),
         measures: totalMeasures,
-        notes: mappedNotes
+        notes: mappedNotes,
+        backingNotes
       };
     }
 
@@ -1034,6 +1292,7 @@
      */
     let currentSong = null;
     let chartNotes = []; // 包含判定狀態：{ beat, drum, status: 'pending'|'perfect'|'good'|'miss' }
+    let backingTrackNotes = []; // GM 背景伴奏音符清單
     let isPlaying = false;
     let gameMode = 'practice'; // 'practice' (練習模式：打對才前進) | 'perform' (表演模式：即時流動)
     let isLooping = true;
@@ -1089,6 +1348,7 @@
     }
 
     function resetPracticeState() {
+      stopAllBackingVoices();
       const range = getActiveRangeBeats();
       chartNotes = currentSong.notes.map(n => {
         const inRange = n.beat >= range.start - 0.001 && n.beat < range.end - 0.001;
@@ -1098,7 +1358,12 @@
         };
       });
 
-      // 練習模式直接定位到選取範圍內的第一個音符開始；表演模式給 2~4 拍預備拍
+      backingTrackNotes = (currentSong.backingNotes || []).map(bn => ({
+        ...bn,
+        played: bn.beat < range.start - 0.001 || bn.beat >= range.end - 0.001
+      }));
+
+      // 練習模式直接定位到選取範圍內的第一個音符開始；表演模式給 4 拍預備拍
       if (gameMode === 'practice') {
         const firstPending = chartNotes.find(n => n.status === 'pending');
         const startBeat = firstPending ? firstPending.beat : range.start;
@@ -1116,6 +1381,7 @@
 
     function seekToBeat(beat) {
       if (!currentSong) return;
+      stopAllBackingVoices();
       const totalBeats = currentSong.measures * 4;
       const clamped = Math.max(0, Math.min(totalBeats, beat));
       currentBeat = clamped;
@@ -1132,6 +1398,11 @@
         } else {
           n.status = 'pending';
         }
+      });
+
+      backingTrackNotes.forEach(bn => {
+        const inRange = bn.beat >= range.start - 0.001 && bn.beat < range.end - 0.001;
+        bn.played = !inRange || bn.beat < clamped - 0.01;
       });
 
       if (gameMode === 'practice') {
@@ -1247,6 +1518,15 @@
           const remainingInChord = chordNotes.filter(n => n.status === 'pending');
           if (remainingInChord.length === 0) {
             spawnFloatingEffect('PERFECT!', '#10b981', staffStep);
+
+            // 練習模式下，敲對該拍時同步觸發該拍附近的 GM 伴奏和弦，讓練習更有音樂感！
+            const secPerBeat = 60 / getEffectiveBpm();
+            for (const bn of backingTrackNotes) {
+              if (!bn.played && bn.beat <= currentTargetBeat + 0.12) {
+                bn.played = true;
+                playGmBackingNote(bn.note, bn.velocity, bn.durationBeats * secPerBeat, bn.program);
+              }
+            }
 
             // 尋找下一個未完成的拍點並推進游標
             const nextPending = chartNotes.find(n => n.status === 'pending');
@@ -1527,7 +1807,18 @@
           // 表演模式：依照 BPM 穩定前進
           const effBpm = getEffectiveBpm();
           const beatsPerSec = effBpm / 60;
+          const secPerBeat = 60 / effBpm;
           currentBeat += dtSec * beatsPerSec;
+
+          // 觸發 GM 背景伴奏軌音符 (Channel 1~9, 11~16)
+          if (currentBeat >= range.start) {
+            for (const bn of backingTrackNotes) {
+              if (!bn.played && bn.beat <= currentBeat && bn.beat < range.end) {
+                bn.played = true;
+                playGmBackingNote(bn.note, bn.velocity, bn.durationBeats * secPerBeat, bn.program);
+              }
+            }
+          }
 
           // 節拍器滴答聲
           const beatInt = Math.floor(currentBeat);
@@ -1558,13 +1849,19 @@
           const endThreshold = abLoopEnabled ? range.end : range.end + 0.35;
           if (currentBeat >= endThreshold) {
             if (isLooping || abLoopEnabled) {
+              stopAllBackingVoices();
               currentBeat = range.start;
               lastMetronomeBeatInt = Math.floor(range.start) - 1;
               chartNotes.forEach(n => {
                 const inRange = n.beat >= range.start - 0.001 && n.beat < range.end - 0.001;
                 n.status = inRange ? 'pending' : 'skipped';
               });
+              backingTrackNotes.forEach(bn => {
+                const inRange = bn.beat >= range.start - 0.001 && bn.beat < range.end - 0.001;
+                bn.played = !inRange;
+              });
             } else {
+              stopAllBackingVoices();
               isPlaying = false;
               updatePlayButtonUI();
               showToast('🎵 曲目演奏完成！');
@@ -2286,6 +2583,7 @@
         lastFrameTime = performance.now();
       } else {
         isPlaying = false;
+        stopAllBackingVoices();
       }
       updatePlayButtonUI();
     });
@@ -2319,6 +2617,13 @@
       updateSongBanner();
     });
 
+    document.getElementById('backing-slider').addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10);
+      backingVolume = val / 100;
+      document.getElementById('backing-display').textContent = `${val}%`;
+      if (backingVolume === 0) stopAllBackingVoices();
+    });
+
     document.getElementById('room-slider').addEventListener('input', (e) => {
       const val = parseInt(e.target.value, 10);
       roomAmbienceAmount = val / 100;
@@ -2333,26 +2638,213 @@
       if (BUILTIN_SONGS[key]) {
         loadSong(BUILTIN_SONGS[key]);
         showToast(`已載入：${BUILTIN_SONGS[key].title}`);
+      } else if (localImportedSongs[key]) {
+        loadSong(localImportedSongs[key]);
+        showToast(`💻 已切換至本地曲目：${localImportedSongs[key].title}`);
       }
     });
 
-    // 匯入外部 .mid 檔案
+    // 儲存已匯入的本地 MIDI 曲目清單，方便隨時切換
+    const localImportedSongs = {};
+
+    async function handleLocalMidiFiles(fileList) {
+      if (!fileList || fileList.length === 0) return;
+      const optgroup = document.getElementById('local-songs-optgroup');
+      const selectEl = document.getElementById('song-select');
+      let lastLoadedKey = null;
+      let loadedCount = 0;
+
+      for (const file of Array.from(fileList)) {
+        if (!/\.(mid|midi)$/i.test(file.name)) continue;
+        try {
+          const buffer = await file.arrayBuffer();
+          const parsedSong = parseStandardMidiFile(buffer, `💻 ${file.name}`);
+          if (parsedSong.notes.length === 0) {
+            showToast(`⚠️「${file.name}」內未偵測到打擊樂音符。`);
+            continue;
+          }
+          const key = `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+          localImportedSongs[key] = parsedSong;
+
+          optgroup.classList.remove('hidden');
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = `💻 ${file.name} (${parsedSong.bpm} BPM)`;
+          optgroup.appendChild(opt);
+
+          lastLoadedKey = key;
+          loadedCount++;
+        } catch (err) {
+          showToast(`❌「${file.name}」解析失敗：${err.message}`);
+        }
+      }
+
+      if (lastLoadedKey) {
+        selectEl.value = lastLoadedKey;
+        const song = localImportedSongs[lastLoadedKey];
+        loadSong(song);
+        showToast(
+          loadedCount > 1
+            ? `✅ 已批次匯入 ${loadedCount} 首本地 MIDI 曲目，目前載入：${song.title}`
+            : `✅ 成功載入本地曲目（共 ${song.notes.length} 鼓點 / ${song.backingNotes.length} 伴奏音）`
+        );
+      }
+    }
+
+    // 匯入外部本機 .mid 檔案 (支援一次多選)
     document.getElementById('midi-file-input').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+      await handleLocalMidiFiles(e.target.files);
+      e.target.value = '';
+    });
+
+    // 全視窗拖放 (Drag & Drop) 匯入本地 .mid 檔案
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+    window.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        await handleLocalMidiFiles(e.dataTransfer.files);
+      }
+    });
+
+    /**
+     * ============================================================================
+     * 8. GitHub 雲端譜庫同步引擎 (自動讀取 wu1008mon/DrumSight-Studio 的 .mid 檔案)
+     * ============================================================================
+     */
+    let githubConfig = {
+      owner: localStorage.getItem('ds_gh_owner') || 'wu1008mon',
+      repo: localStorage.getItem('ds_gh_repo') || 'DrumSight-Studio',
+      folder: localStorage.getItem('ds_gh_folder') !== null ? localStorage.getItem('ds_gh_folder') : 'songs'
+    };
+
+    async function fetchCloudMidiList(silent = false) {
+      const selectEl = document.getElementById('cloud-song-select');
+      selectEl.innerHTML = '<option value="">⏳ 正在同步 GitHub 雲端譜庫...</option>';
+
+      const { owner, repo, folder } = githubConfig;
+      const pathsToCheck = [];
+      if (folder && folder.trim()) {
+        pathsToCheck.push(folder.trim().replace(/^\/+|\/+$/g, ''));
+      }
+      // 同時檢查根目錄，避免使用者直接把 .mid 上傳在根目錄而沒建資料夾
+      if (!pathsToCheck.includes('')) {
+        pathsToCheck.push('');
+      }
+
+      const foundFiles = [];
+      const seenUrls = new Set();
+
+      for (const path of pathsToCheck) {
+        const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+        try {
+          const res = await fetch(apiUrl, { headers: { 'Accept': 'application/vnd.github.v3+json' } });
+          if (!res.ok) continue;
+          const items = await res.json();
+          if (!Array.isArray(items)) continue;
+
+          for (const item of items) {
+            if (item.type === 'file' && /\.(mid|midi)$/i.test(item.name) && item.download_url) {
+              if (!seenUrls.has(item.download_url)) {
+                seenUrls.add(item.download_url);
+                foundFiles.push({
+                  name: item.name,
+                  path: item.path,
+                  downloadUrl: item.download_url
+                });
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('GitHub API 讀取路徑失敗:', path, err);
+        }
+      }
+
+      selectEl.innerHTML = '';
+      if (foundFiles.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = `📭 雲端尚無 .mid 檔 (${owner}/${repo})`;
+        selectEl.appendChild(opt);
+        if (!silent) {
+          showToast(`ℹ️ 在 ${owner}/${repo} 尚未找到 .mid 檔案，請在 GitHub 上傳至 songs/ 資料夾`);
+        }
+        return;
+      }
+
+      foundFiles.forEach((f, idx) => {
+        const opt = document.createElement('option');
+        opt.value = f.downloadUrl;
+        opt.dataset.filename = f.name;
+        opt.textContent = `☁️ ${f.name} (${f.path})`;
+        if (idx === 0) opt.selected = true;
+        selectEl.appendChild(opt);
+      });
+
+      if (!silent) {
+        showToast(`✅ 已從 GitHub 同步 ${foundFiles.length} 首雲端鼓譜！`);
+      }
+    }
+
+    async function loadSelectedCloudSong() {
+      const selectEl = document.getElementById('cloud-song-select');
+      const url = selectEl.value;
+      if (!url) {
+        showToast('⚠️ 請先在 GitHub 倉庫上傳 .mid 檔案，再點擊重新整理！');
+        return;
+      }
+      const selectedOpt = selectEl.options[selectEl.selectedIndex];
+      const fileName = selectedOpt ? (selectedOpt.dataset.filename || 'cloud_song.mid') : 'cloud_song.mid';
+
       try {
-        const buffer = await file.arrayBuffer();
-        const parsedSong = parseStandardMidiFile(buffer, file.name);
+        showToast(`⏳ 正在下載雲端樂譜：${fileName}...`);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buffer = await res.arrayBuffer();
+        const parsedSong = parseStandardMidiFile(buffer, `☁️ ${fileName}`);
         if (parsedSong.notes.length === 0) {
-          showToast('⚠️ 此 MIDI 檔案內未偵測到打擊樂音符。');
+          showToast('⚠️ 此雲端 MIDI 檔案內未偵測到打擊樂音符。');
           return;
         }
         loadSong(parsedSong);
-        showToast(`✅ 成功匯入「${file.name}」，共解析 ${parsedSong.notes.length} 個鼓點！`);
+        showToast(`✅ 雲端曲目載入成功：${fileName}（共 ${parsedSong.notes.length} 鼓點 / ${parsedSong.backingNotes.length} 伴奏音）`);
       } catch (err) {
-        showToast(`❌ MIDI 解析失敗：${err.message}`);
+        showToast(`❌ 雲端曲目載入失敗：${err.message}`);
       }
-      e.target.value = '';
+    }
+
+    document.getElementById('btn-load-cloud-song').addEventListener('click', loadSelectedCloudSong);
+    document.getElementById('btn-refresh-cloud').addEventListener('click', () => fetchCloudMidiList(false));
+
+    document.getElementById('btn-cloud-config').addEventListener('click', () => {
+      document.getElementById('input-gh-owner').value = githubConfig.owner;
+      document.getElementById('input-gh-repo').value = githubConfig.repo;
+      document.getElementById('input-gh-folder').value = githubConfig.folder;
+      const modal = document.getElementById('cloud-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    });
+
+    document.getElementById('btn-close-cloud-modal').addEventListener('click', () => {
+      const modal = document.getElementById('cloud-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    });
+
+    document.getElementById('btn-save-cloud-modal').addEventListener('click', () => {
+      githubConfig.owner = document.getElementById('input-gh-owner').value.trim() || 'wu1008mon';
+      githubConfig.repo = document.getElementById('input-gh-repo').value.trim() || 'DrumSight-Studio';
+      githubConfig.folder = document.getElementById('input-gh-folder').value.trim();
+
+      localStorage.setItem('ds_gh_owner', githubConfig.owner);
+      localStorage.setItem('ds_gh_repo', githubConfig.repo);
+      localStorage.setItem('ds_gh_folder', githubConfig.folder);
+
+      const modal = document.getElementById('cloud-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      fetchCloudMidiList(false);
     });
 
     // MIDI Learn 視窗控制
@@ -2434,6 +2926,7 @@
       renderDrumPadsUI();
       loadSong(BUILTIN_SONGS.rock8);
       initWebMIDI();
+      fetchCloudMidiList(true);
       requestAnimationFrame(renderLoop);
     };
   </script>
