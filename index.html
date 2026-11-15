@@ -228,7 +228,7 @@
       </div>
 
       <!-- Canvas 樂譜渲染畫布 -->
-      <div class="relative w-full h-[260px] sm:h-[290px]" id="canvas-container">
+      <div class="relative w-full h-[275px] sm:h-[305px] transition-all duration-200" id="canvas-container">
         <canvas id="sheet-canvas" class="w-full h-full block"></canvas>
       </div>
 
@@ -1125,26 +1125,41 @@
 
       let detectedBpm = 100;
       const rawEvents = [];
+      const rawLyricEvents = [];
       const channelPrograms = new Array(16).fill(0); // 追蹤各 Channel 的 GM 音色編號
+      const trackInfos = []; // 記錄每一軌的歌詞與旋律音符，以便找出「帶歌詞的旋律軌」
+
+      // 智慧解碼 MIDI 歌詞位元組 (自動支援 UTF-8、Big5 繁體、GBK 簡體)
+      function decodeMidiTextBytes(byteArray) {
+        const u8 = new Uint8Array(byteArray);
+        try {
+          return new TextDecoder('utf-8', { fatal: true }).decode(u8);
+        } catch (e) {
+          try {
+            return new TextDecoder('big5', { fatal: true }).decode(u8);
+          } catch (e2) {
+            try {
+              return new TextDecoder('gbk').decode(u8);
+            } catch (e3) {
+              return new TextDecoder('latin1').decode(u8);
+            }
+          }
+        }
+      }
 
       for (let t = 0; t < numTracks; t++) {
         if (pos + 8 > view.byteLength) break;
-        const chunkType = readStr(4);
-        const chunkLen = view.getUint32(pos); pos += 4;
-        const chunkEnd = pos + chunkLen;
-
-        if (chunkType !== 'MTrk') {
-          pos = chunkEnd;
-          continue;
-        }
-
+        if (readStr(4) !== 'MTrk') break;
+        const trackLen = view.getUint32(pos); pos += 4;
+        const trackEnd = pos + trackLen;
         let ticks = 0;
         let runningStatus = 0;
+        const trackLyrics = [];
+        const trackNoteEvents = [];
 
-        while (pos < chunkEnd) {
+        while (pos < trackEnd) {
           const delta = readVarLen();
           ticks += delta;
-
           let status = view.getUint8(pos);
           if (status < 0x80) {
             status = runningStatus;
@@ -1160,6 +1175,26 @@
             if (metaType === 0x51 && len === 3) {
               const microsecPerBeat = (view.getUint8(pos) << 16) | (view.getUint8(pos + 1) << 8) | view.getUint8(pos + 2);
               detectedBpm = Math.round(60000000 / microsecPerBeat);
+            } else if ((metaType === 0x05 || metaType === 0x01) && len > 0) {
+              // 0x05 = 標準 MIDI 歌詞事件 (Lyric); 0x01 = 卡拉OK MIDI (.kar) 常用歌詞事件
+              const textBytes = [];
+              for (let k = 0; k < len; k++) {
+                textBytes.push(view.getUint8(pos + k));
+              }
+              const decoded = decodeMidiTextBytes(textBytes)
+                .replace(/[\r\n]+/g, ' ')
+                .replace(/^[/\\]+/, '')
+                .trim();
+              // 過濾掉檔頭設定標籤 (@KMIDI, @T, @L, @V 等) 與空白字元
+              if (decoded && !decoded.startsWith('@') && !/^%/.test(decoded)) {
+                const lyricObj = {
+                  beat: ticks / division,
+                  text: decoded,
+                  isExplicitLyric: metaType === 0x05
+                };
+                rawLyricEvents.push(lyricObj);
+                trackLyrics.push(lyricObj);
+              }
             }
             pos += len;
           } else if (status === 0xf0 || status === 0xf7) {
@@ -1172,120 +1207,163 @@
             const d2 = (cmd === 0xc0 || cmd === 0xd0) ? 0 : view.getUint8(pos++);
 
             if (cmd === 0xc0) {
-              // Program Change：記錄該軌道的 GM 音色
+              // Program Change: 記錄此 Channel 使用的 GM 音色編號 (0~127)
               channelPrograms[channel] = d1;
             } else if (cmd === 0x90 && d2 > 0) {
-              rawEvents.push({
+              const ev = {
                 type: 'on',
                 beat: ticks / division,
                 channel,
                 note: d1,
                 velocity: d2,
                 program: channelPrograms[channel]
-              });
+              };
+              rawEvents.push(ev);
+              if (channel !== 9) trackNoteEvents.push(ev);
             } else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) {
-              rawEvents.push({
+              const ev = {
                 type: 'off',
                 beat: ticks / division,
                 channel,
                 note: d1
-              });
+              };
+              rawEvents.push(ev);
+              if (channel !== 9) trackNoteEvents.push(ev);
             }
           }
         }
-        pos = chunkEnd;
+        trackInfos.push({ trackIndex: t, lyrics: trackLyrics, noteEvents: trackNoteEvents });
+        pos = trackEnd;
       }
 
-      // 分離打擊樂軌道 (Channel 10 / index 9) 與其餘伴奏樂器軌道
-      const ch10OnEvents = rawEvents.filter(e => e.type === 'on' && e.channel === 9);
-      const nonDrumEvents = rawEvents.filter(e => e.channel !== 9);
+      // 分離 Channel 10 打擊樂與其他背景伴奏聲部 (Channel 1~9, 11~16)
+      const drumOnEvents = rawEvents.filter(e => e.type === 'on' && e.channel === 9);
+      const sourceDrumEvents = drumOnEvents.length > 0 ? drumOnEvents : rawEvents.filter(e => e.type === 'on');
 
-      // 若該 MIDI 檔完全沒有 Channel 10，則將所有 Note On 當成鼓組譜；否則只取 Channel 10 為鼓譜
-      const targetDrumEvents = ch10OnEvents.length > 0
-        ? ch10OnEvents
-        : rawEvents.filter(e => e.type === 'on');
-
-      // 配對非鼓組軌道的 Note On 與 Note Off 計算正確音符時值，建立 GM 背景伴奏軌
-      const backingNotes = [];
-      if (ch10OnEvents.length > 0 && nonDrumEvents.length > 0) {
-        const openNotesMap = new Map();
-        nonDrumEvents.sort((a, b) => a.beat - b.beat);
-        for (const ev of nonDrumEvents) {
-          const key = `${ev.channel}_${ev.note}`;
-          if (ev.type === 'on') {
-            openNotesMap.set(key, ev);
-          } else if (ev.type === 'off' && openNotesMap.has(key)) {
-            const startEv = openNotesMap.get(key);
-            openNotesMap.delete(key);
-            const durationBeats = Math.max(0.15, Math.min(8.0, ev.beat - startEv.beat));
-            backingNotes.push({
-              beat: startEv.beat,
-              durationBeats,
-              note: startEv.note,
-              velocity: startEv.velocity,
-              program: startEv.program,
-              played: false
-            });
-          }
-        }
-        // 處理未明確閉合的延音音符
-        for (const startEv of openNotesMap.values()) {
-          backingNotes.push({
-            beat: startEv.beat,
-            durationBeats: 0.5,
-            note: startEv.note,
-            velocity: startEv.velocity,
-            program: startEv.program,
-            played: false
-          });
-        }
-        backingNotes.sort((a, b) => a.beat - b.beat);
-      }
-
-      // 將鼓組 MIDI Note 映射為五線譜鼓件
       const mappedNotes = [];
-      let maxBeat = 4;
+      let maxBeat = 0;
 
-      targetDrumEvents.forEach(ev => {
-        // 量化至最近的 1/16 音符 (0.25 拍) 讓五線譜整齊清晰
-        const quantizedBeat = Math.round(ev.beat * 4) / 4;
-        if (quantizedBeat > maxBeat) maxBeat = quantizedBeat;
-
-        // 依 GM 鼓組規則分配鼓件
-        let drumId = noteToDrumId[ev.note];
-        if (!drumId) {
-          if (ev.note <= 36) drumId = 'kick';
-          else if (ev.note <= 40) drumId = 'snare';
-          else if (ev.note === 41 || ev.note === 43 || ev.note === 45) drumId = 'floortom';
-          else if (ev.note === 47 || ev.note === 48) drumId = 'midtom';
-          else if (ev.note === 50) drumId = 'hightom';
-          else if (ev.note === 46) drumId = 'openhh';
-          else if (ev.note === 51 || ev.note === 53 || ev.note === 59) drumId = 'ride';
-          else if (ev.note >= 49) drumId = 'crash';
-          else drumId = 'hihat';
-        }
-
-        // 避免同一拍出現重複相同的鼓件
-        const exists = mappedNotes.some(n => Math.abs(n.beat - quantizedBeat) < 0.01 && n.drum === drumId);
-        if (!exists) {
+      sourceDrumEvents.forEach(ev => {
+        const drumId = noteToDrumId[ev.note];
+        if (drumId) {
+          const quantizedBeat = Math.round(ev.beat * 4) / 4;
           mappedNotes.push({ beat: quantizedBeat, drum: drumId });
+          if (quantizedBeat > maxBeat) maxBeat = quantizedBeat;
         }
       });
 
+      // 配對背景伴奏軌道的 Note On 與 Note Off 計算每個伴奏音符的持續拍數
+      const backingNotes = [];
+      const activeMelodicNotes = new Map();
+      rawEvents
+        .filter(e => e.channel !== 9)
+        .sort((a, b) => a.beat - b.beat)
+        .forEach(ev => {
+          const key = `${ev.channel}_${ev.note}`;
+          if (ev.type === 'on') {
+            activeMelodicNotes.set(key, ev);
+          } else if (ev.type === 'off' && activeMelodicNotes.has(key)) {
+            const startEv = activeMelodicNotes.get(key);
+            activeMelodicNotes.delete(key);
+            const durBeats = Math.max(0.15, Math.min(8.0, ev.beat - startEv.beat));
+            backingNotes.push({
+              beat: startEv.beat,
+              durationBeats: durBeats,
+              note: startEv.note,
+              velocity: startEv.velocity,
+              program: startEv.program
+            });
+          }
+        });
+
+      // 處理未明確送出 Note Off 的殘留音符
+      activeMelodicNotes.forEach(startEv => {
+        backingNotes.push({
+          beat: startEv.beat,
+          durationBeats: 0.5,
+          note: startEv.note,
+          velocity: startEv.velocity,
+          program: startEv.program
+        });
+      });
+
+      backingNotes.sort((a, b) => a.beat - b.beat);
       backingNotes.forEach(bn => {
         if (bn.beat > maxBeat) maxBeat = bn.beat;
       });
 
+      // 整理同步歌詞事件 (優先採用標準 0x05 Lyric 軌；若無則採用 0x01 Text 軌)
+      const explicitLyrics = rawLyricEvents.filter(l => l.isExplicitLyric);
+      const chosenLyrics = explicitLyrics.length > 0 ? explicitLyrics : rawLyricEvents;
+      const lyrics = chosenLyrics
+        .map(l => ({ beat: l.beat, text: l.text }))
+        .sort((a, b) => a.beat - b.beat);
+
+      lyrics.forEach(ly => {
+        if (ly.beat > maxBeat) maxBeat = ly.beat;
+      });
+
+      // 找出「帶有歌詞的那一軌道」中的主旋律音符，供繪製高音譜號五線譜
+      let vocalMelodyNotes = [];
+      if (lyrics.length > 0) {
+        // 1) 優先找本身同時包含歌詞與音符的 Track
+        const trackWithBoth = trackInfos.find(tr => tr.lyrics.length > 0 && tr.noteEvents.some(e => e.type === 'on'));
+        let targetNoteEvents = trackWithBoth ? trackWithBoth.noteEvents : [];
+
+        // 2) 若卡拉OK MIDI 將歌詞獨立放在文字軌，則自動比對與歌詞拍點重合度最高的旋律軌 (通常是 Channel 1 / 4)
+        if (targetNoteEvents.length === 0) {
+          let bestScore = -1;
+          for (const tr of trackInfos) {
+            const onEvs = tr.noteEvents.filter(e => e.type === 'on');
+            if (onEvs.length === 0) continue;
+            let matchCount = 0;
+            for (const ly of lyrics) {
+              if (onEvs.some(n => Math.abs(n.beat - ly.beat) < 0.25)) matchCount++;
+            }
+            if (matchCount > bestScore) {
+              bestScore = matchCount;
+              targetNoteEvents = tr.noteEvents;
+            }
+          }
+        }
+
+        const activeVocal = new Map();
+        targetNoteEvents
+          .slice()
+          .sort((a, b) => a.beat - b.beat)
+          .forEach(ev => {
+            const key = `${ev.channel}_${ev.note}`;
+            if (ev.type === 'on') {
+              activeVocal.set(key, ev);
+            } else if (ev.type === 'off' && activeVocal.has(key)) {
+              const st = activeVocal.get(key);
+              activeVocal.delete(key);
+              vocalMelodyNotes.push({
+                beat: st.beat,
+                durationBeats: Math.max(0.25, Math.min(4.0, ev.beat - st.beat)),
+                note: st.note
+              });
+            }
+          });
+        activeVocal.forEach(st => {
+          vocalMelodyNotes.push({ beat: st.beat, durationBeats: 0.5, note: st.note });
+        });
+        vocalMelodyNotes.sort((a, b) => a.beat - b.beat);
+      }
+
       mappedNotes.sort((a, b) => a.beat - b.beat);
       const totalMeasures = Math.max(1, Math.ceil((maxBeat + 0.25) / 4));
       const trackBadge = backingNotes.length > 0 ? ` | 含 ${backingNotes.length} 音伴奏軌` : '';
+      const lyricBadge = lyrics.length > 0 ? ` | 🎤 含歌詞旋律譜` : '';
 
       return {
-        title: `${fileName} (${detectedBpm} BPM${trackBadge})`,
+        title: `${fileName} (${detectedBpm} BPM${trackBadge}${lyricBadge})`,
         bpm: Math.max(40, Math.min(220, detectedBpm)),
         measures: totalMeasures,
         notes: mappedNotes,
-        backingNotes
+        backingNotes,
+        lyrics,
+        vocalMelodyNotes
       };
     }
 
@@ -1337,6 +1415,17 @@
       abLoopEnabled = false;
       loopStartBeat = 0;
       loopEndBeat = (songObj.measures || 4) * 4;
+
+      // 若歌曲包含歌詞或主旋律五線譜，自動加高畫布容納「主唱旋律五線譜 + 爵士鼓五線譜」雙行總譜
+      const container = document.getElementById('canvas-container');
+      const hasVocalStaff = (songObj.lyrics && songObj.lyrics.length > 0) || (songObj.vocalMelodyNotes && songObj.vocalMelodyNotes.length > 0);
+      if (container) {
+        container.className = hasVocalStaff
+          ? 'relative w-full h-[390px] sm:h-[430px] transition-all duration-200'
+          : 'relative w-full h-[275px] sm:h-[305px] transition-all duration-200';
+        resizeCanvas();
+      }
+
       updateAbLoopControlsUI();
       updatePlayButtonUI();
       resetPracticeState();
@@ -1986,9 +2075,13 @@
 
       ctx.clearRect(0, 0, width, height);
 
-      // 五線譜幾何參數
-      const lineSpacing = 15;
-      const topLineY = Math.round(height * 0.44);
+      // 五線譜幾何參數：若有歌詞或主唱旋律軌，啟用「上方高音譜號旋律五線譜 + 下方爵士鼓五線譜」雙行總譜模式
+      const hasLyrics = currentSong && Array.isArray(currentSong.lyrics) && currentSong.lyrics.length > 0;
+      const hasVocalMelody = currentSong && Array.isArray(currentSong.vocalMelodyNotes) && currentSong.vocalMelodyNotes.length > 0;
+      const hasVocalStaff = hasLyrics || hasVocalMelody;
+
+      const lineSpacing = hasVocalStaff ? 13.5 : 15;
+      const topLineY = hasVocalStaff ? Math.round(height * 0.56) : Math.round(height * 0.44);
       const hitLineX = Math.min(185, width * 0.22);
       const basePixelsPerBeat = Math.max(95, Math.min(145, width / 6.5));
       const pixelsPerBeat = basePixelsPerBeat * sheetZoomScale;
@@ -1996,6 +2089,209 @@
       // 輔助函式：將 staffStep 轉換為畫布 Y 座標
       // 1 = 第一間, 2 = 第一線, 3 = 第二間, 4 = 第二線, 5 = 第三間, 6 = 第三線, 7 = 第四間, 8 = 第四線, 9 = 第五線, 10 = 第五線上方間, 11 = 上加一線
       const stepToY = (step) => topLineY + (9 - step) * (lineSpacing / 2);
+
+      // 0. 若 MIDI 檔內含歌詞或主唱旋律軌，在上方繪製「🎤 同步歌詞 ＋ 高音譜號旋律五線譜」
+      if (hasVocalStaff) {
+        const vocalLineSpacing = 11;
+        const vocalTopLineY = 54; // F5 第五線 Y 座標 (上方留 54px 給歌詞與高音音符)
+        const vocalBottomLineY = vocalTopLineY + vocalLineSpacing * 4; // E4 第一線
+
+        // 淡雅背景區隔上方主唱聲部與下方爵士鼓聲部
+        ctx.fillStyle = '#f1f5f9';
+        ctx.fillRect(0, 0, width, vocalBottomLineY + 26);
+
+        // 繪製左側總譜大括號連接線 (Grand Staff Brace Line)
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(22, vocalTopLineY);
+        ctx.lineTo(22, topLineY + lineSpacing * 4);
+        ctx.stroke();
+
+        // 繪製高音譜號五條線
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 1.2;
+        for (let i = 0; i < 5; i++) {
+          const vy = vocalTopLineY + i * vocalLineSpacing;
+          ctx.beginPath();
+          ctx.moveTo(24, vy);
+          ctx.lineTo(width - 24, vy);
+          ctx.stroke();
+        }
+
+        // 繪製高音譜號 (𝄞) 與 4/4 拍號
+        ctx.fillStyle = '#334155';
+        ctx.font = '44px serif';
+        ctx.fillText('𝄞', 30, vocalTopLineY + vocalLineSpacing * 3.5);
+        ctx.font = '800 18px Inter, sans-serif';
+        ctx.fillText('4', 60, vocalTopLineY + vocalLineSpacing * 1.75);
+        ctx.fillText('4', 60, vocalTopLineY + vocalLineSpacing * 3.75);
+
+        // 左上角聲部標籤
+        ctx.fillStyle = '#0284c7';
+        ctx.font = 'bold 11px Inter, sans-serif';
+        ctx.fillText('🎤 主唱旋律 & 歌詞軌', 26, 16);
+
+        // 將 MIDI 音高轉換為高音譜號上的自然音階步進 (以 E4=MIDI 64 第一線為基準 0)
+        const pitchClassToDiatonic = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6]; // C, C#, D, D#, E, F, F#, G, G#, A, A#, B
+        const midiToTrebleStep = (midiNote) => {
+          const oct = Math.floor(midiNote / 12) - 1;
+          const pc = midiNote % 12;
+          const absDiatonic = oct * 7 + pitchClassToDiatonic[pc];
+          const e4Diatonic = 4 * 7 + 2; // E4 = 30
+          return absDiatonic - e4Diatonic;
+        };
+
+        // 繪製小節線貫穿上方旋律五線譜
+        if (currentSong) {
+          const totalBeats = currentSong.measures * 4;
+          for (let b = 0; b <= totalBeats; b += 4) {
+            const mx = hitLineX + (b - currentBeat) * pixelsPerBeat;
+            if (mx < 75 || mx > width + 40) continue;
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(mx, vocalTopLineY);
+            ctx.lineTo(mx, vocalBottomLineY);
+            ctx.stroke();
+          }
+        }
+
+        // 找出當前正在唱的歌詞索引
+        let activeLyricIdx = -1;
+        if (hasLyrics) {
+          for (let i = 0; i < currentSong.lyrics.length; i++) {
+            if (currentSong.lyrics[i].beat <= currentBeat + 0.15) {
+              activeLyricIdx = i;
+            } else {
+              break;
+            }
+          }
+        }
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(74, 0, width - 74, vocalBottomLineY + 26);
+        ctx.clip();
+
+        // (A) 繪製主唱旋律軌的五線譜音符 (Noteheads, Stems, Ledger Lines & Duration Ties)
+        if (hasVocalMelody) {
+          for (const vn of currentSong.vocalMelodyNotes) {
+            const vx = hitLineX + (vn.beat - currentBeat) * pixelsPerBeat;
+            if (vx < 65 || vx > width + 60) continue;
+
+            const step = midiToTrebleStep(vn.note);
+            const vy = vocalBottomLineY - step * (vocalLineSpacing / 2);
+            const isActiveNote = vn.beat <= currentBeat && (vn.beat + vn.durationBeats) >= currentBeat;
+            const isPastNote = (vn.beat + vn.durationBeats) < currentBeat;
+
+            const vColor = isActiveNote ? '#0284c7' : (isPastNote ? '#94a3b8' : '#1e293b');
+            ctx.strokeStyle = vColor;
+            ctx.fillStyle = vColor;
+            ctx.lineWidth = 1.6;
+
+            // 繪製下加線 (如中央 C C4: step = -2) 或上加線 (如 A5: step = 10)
+            if (step <= -2) {
+              for (let s = -2; s >= step; s -= 2) {
+                const ly = vocalBottomLineY - s * (vocalLineSpacing / 2);
+                ctx.beginPath();
+                ctx.moveTo(vx - 9, ly);
+                ctx.lineTo(vx + 9, ly);
+                ctx.stroke();
+              }
+            } else if (step >= 10) {
+              for (let s = 10; s <= step; s += 2) {
+                const ly = vocalBottomLineY - s * (vocalLineSpacing / 2);
+                ctx.beginPath();
+                ctx.moveTo(vx - 9, ly);
+                ctx.lineTo(vx + 9, ly);
+                ctx.stroke();
+              }
+            }
+
+            // 長音延續線 (方便鼓手看主唱拉長音的拍數)
+            if (vn.durationBeats > 0.6) {
+              const durW = Math.min(width, vn.durationBeats * pixelsPerBeat - 6);
+              if (durW > 6) {
+                ctx.fillStyle = isActiveNote ? 'rgba(2, 132, 199, 0.25)' : 'rgba(148, 163, 184, 0.25)';
+                ctx.fillRect(vx + 5, vy - 2.5, durW, 5);
+              }
+            }
+
+            // 旋律音符橢圓符頭 (二分/全音符為空心，四分/八分音符為實心)
+            const isHollow = vn.durationBeats >= 1.75;
+            ctx.save();
+            ctx.translate(vx, vy);
+            ctx.rotate(-0.28);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 5.6, 4.0, 0, 0, Math.PI * 2);
+            if (isHollow) {
+              ctx.fillStyle = '#f1f5f9';
+              ctx.fill();
+              ctx.stroke();
+            } else {
+              ctx.fillStyle = vColor;
+              ctx.fill();
+            }
+            ctx.restore();
+
+            // 符桿 (B4 step >= 4 朝下，否則朝上)
+            if (vn.durationBeats < 3.5) {
+              ctx.strokeStyle = vColor;
+              ctx.lineWidth = 1.4;
+              ctx.beginPath();
+              if (step >= 4) {
+                ctx.moveTo(vx - 4.8, vy);
+                ctx.lineTo(vx - 4.8, vy + 24);
+              } else {
+                ctx.moveTo(vx + 4.8, vy);
+                ctx.lineTo(vx + 4.8, vy - 24);
+              }
+              ctx.stroke();
+            }
+          }
+        }
+
+        // (B) 繪製與旋律五線譜精準對齊的同步歌詞
+        if (hasLyrics) {
+          for (let i = 0; i < currentSong.lyrics.length; i++) {
+            const ly = currentSong.lyrics[i];
+            const lx = hitLineX + (ly.beat - currentBeat) * pixelsPerBeat;
+            if (lx < 50 || lx > width + 80) continue;
+
+            const isCurrent = i === activeLyricIdx;
+            const isPast = i < activeLyricIdx;
+
+            // 對齊指引小刻度
+            ctx.strokeStyle = isCurrent ? '#d97706' : 'rgba(148, 163, 184, 0.45)';
+            ctx.lineWidth = isCurrent ? 2 : 1;
+            ctx.beginPath();
+            ctx.moveTo(lx, 24);
+            ctx.lineTo(lx, 31);
+            ctx.stroke();
+
+            // 當前正在唱的字加上琥珀金底色膠囊，視覺最醒目
+            ctx.font = isCurrent
+              ? '800 14px Inter, "Microsoft JhengHei", "PingFang TC", sans-serif'
+              : '600 13px Inter, "Microsoft JhengHei", "PingFang TC", sans-serif';
+
+            if (isCurrent) {
+              const tw = ctx.measureText(ly.text).width;
+              ctx.fillStyle = '#fef3c7';
+              ctx.beginPath();
+              ctx.roundRect(lx - 4, 18, tw + 8, 19, 5);
+              ctx.fill();
+              ctx.strokeStyle = '#f59e0b';
+              ctx.lineWidth = 1.2;
+              ctx.stroke();
+            }
+
+            ctx.fillStyle = isCurrent ? '#b45309' : (isPast ? '#94a3b8' : '#0f172a');
+            ctx.fillText(ly.text, lx, 32);
+          }
+        }
+        ctx.restore();
+      }
 
       // 1. 繪製五條標準五線譜水平線
       ctx.strokeStyle = '#94a3b8';
@@ -2087,21 +2383,21 @@
           }
         }
       }
-
-      // 4. 繪製左側判定基準線 (Playhead)
+      // 4. 繪製左側判定基準線 (Playhead) — 若有上方主唱旋律譜，判定線會同時貫穿上下兩行五線譜！
+      const playheadTopY = hasVocalStaff ? 38 : (topLineY - 54);
       ctx.strokeStyle = gameMode === 'practice' ? '#0284c7' : '#6366f1';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(hitLineX, topLineY - 54);
+      ctx.moveTo(hitLineX, playheadTopY);
       ctx.lineTo(hitLineX, topLineY + lineSpacing * 4 + 34);
       ctx.stroke();
 
       // 判定線頂部指示三角形
       ctx.fillStyle = gameMode === 'practice' ? '#0284c7' : '#6366f1';
       ctx.beginPath();
-      ctx.moveTo(hitLineX - 7, topLineY - 60);
-      ctx.lineTo(hitLineX + 7, topLineY - 60);
-      ctx.lineTo(hitLineX, topLineY - 50);
+      ctx.moveTo(hitLineX - 7, playheadTopY - 6);
+      ctx.lineTo(hitLineX + 7, playheadTopY - 6);
+      ctx.lineTo(hitLineX, playheadTopY + 4);
       ctx.closePath();
       ctx.fill();
 
@@ -2255,29 +2551,13 @@
                 ctx.restore();
               }
 
-              // 上加一線短輔助線 (Ledger Line)：僅針對 staffStep >= 11 (Crash 位於上加一線) 繪製
-              // 上加一線短輔助線 (Ledger Line，僅針對位於上加一線的 Crash 繪製)
-              if (part.staffStep >= 11) {
-                ctx.strokeStyle = '#475569';
-                ctx.lineWidth = 1.6;
-                ctx.beginPath();
-                ctx.moveTo(slot.x - 11, y);
-                ctx.lineTo(slot.x + 11, y);
-                ctx.stroke();
-              }
-
-              ctx.save();
+              // 繪製音符符頭 (Notehead)
               ctx.strokeStyle = noteColor;
               ctx.fillStyle = noteColor;
-              ctx.lineWidth = 2.2;
+              ctx.lineWidth = 2.4;
 
-              if (part.headType === 'normal') {
-                ctx.beginPath();
-                ctx.ellipse(slot.x, y, 6.8, 5.0, -0.32, 0, Math.PI * 2);
-                ctx.fill();
-              } else {
-                // 鈸片類 (Hi-Hat, Open HH, Ride, Crash) 使用 × 符頭；Crash 僅繪製純 × 不加外圈
-                const r = 5.6;
+              if (part.headType === 'x' || part.headType === 'openx' || part.headType === 'ride' || part.headType === 'crash') {
+                const r = 6.2;
                 ctx.beginPath();
                 ctx.moveTo(slot.x - r, y - r);
                 ctx.lineTo(slot.x + r, y + r);
@@ -2285,37 +2565,58 @@
                 ctx.lineTo(slot.x - r, y + r);
                 ctx.stroke();
 
+                // 開放踩鈸 (Open Hi-Hat) 外圍加上圓圈
                 if (part.headType === 'openx') {
                   ctx.beginPath();
-                  ctx.arc(slot.x, y, 8.2, 0, Math.PI * 2);
+                  ctx.arc(slot.x, y, r + 3, 0, Math.PI * 2);
                   ctx.stroke();
-                } else if (part.headType === 'ride') {
-                  // 疊音鈸 (Ride) 加上菱形鈸心外框區別
+                }
+
+                // 疊音鈸 (Ride) 外圍加上菱形標記
+                if (part.headType === 'ride') {
                   ctx.beginPath();
-                  ctx.moveTo(slot.x, y - 8.5);
-                  ctx.lineTo(slot.x + 8.5, y);
-                  ctx.lineTo(slot.x, y + 8.5);
-                  ctx.lineTo(slot.x - 8.5, y);
+                  ctx.moveTo(slot.x, y - r - 3.5);
+                  ctx.lineTo(slot.x + r + 3.5, y);
+                  ctx.lineTo(slot.x, y + r + 3.5);
+                  ctx.lineTo(slot.x - r - 3.5, y);
                   ctx.closePath();
                   ctx.stroke();
                 }
+
+                // 碎音鈸 (Crash) 位於上加一線 (staffStep: 11)，繪製一條短橫線正穿過符頭中央
+                if (part.headType === 'crash') {
+                  ctx.lineWidth = 1.6;
+                  ctx.beginPath();
+                  ctx.moveTo(slot.x - 11, y);
+                  ctx.lineTo(slot.x + 11, y);
+                  ctx.stroke();
+                }
+              } else {
+                // 標準實心橢圓符頭 (大鼓、小鼓、高/中/落地鼓)
+                ctx.save();
+                ctx.translate(slot.x, y);
+                ctx.rotate(-0.32);
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 7.2, 5.2, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
               }
-              ctx.restore();
             }
           }
         }
       }
 
-      // 6. 繪製判定飄字特效 (PERFECT / GOOD / MISS)
-      floatingEffects = floatingEffects.filter(ef => now - ef.createdAt < 650);
-      for (const ef of floatingEffects) {
-        const age = (now - ef.createdAt) / 650;
-        const y = stepToY(ef.staffStep) - 18 - age * 28;
+      // 6. 繪製判定回饋浮動文字 (PERFECT / GOOD / MISS / 提示)
+      floatingEffects = floatingEffects.filter(eff => now - eff.createdAt < 750);
+      for (const eff of floatingEffects) {
+        const elapsed = (now - eff.createdAt) / 750;
+        const y = stepToY(eff.staffStep) - 18 - elapsed * 24;
         ctx.save();
-        ctx.globalAlpha = 1 - age;
-        ctx.fillStyle = ef.color;
+        ctx.globalAlpha = 1 - elapsed;
+        ctx.fillStyle = eff.color;
         ctx.font = '800 13px Inter, sans-serif';
-        ctx.fillText(ef.text, hitLineX - 24, y);
+        ctx.textAlign = 'center';
+        ctx.fillText(eff.text, hitLineX, y);
         ctx.restore();
       }
     }
