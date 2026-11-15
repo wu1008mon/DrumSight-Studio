@@ -206,8 +206,8 @@
       <div class="bg-slate-200/90 border-b border-slate-300 px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700 font-medium">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span class="font-bold text-slate-900">🎼 標準爵士鼓五線譜</span>
-          <span>上加二線 <b class="font-mono">×</b>：Crash</span>
-          <span>上加一線 <b class="font-mono">×</b>：Hi-Hat</span>
+          <span>上加一線 <b class="font-mono">×</b>：Crash</span>
+          <span>第五線上方間 <b class="font-mono">×</b>：Hi-Hat</span>
           <span>第五線 <b class="font-mono">×</b>：Ride</span>
           <span>第四間/第四線/第二間 <b class="font-mono">●</b>：高/中/落地鼓</span>
           <span>第三間 <b class="font-mono">●</b>：Snare</span>
@@ -348,17 +348,21 @@
     /**
      * ============================================================================
      * 1. 核心鼓組定義與 GM MIDI 鍵位映射表 (完整 9 件式標準 5 鼓 3 鈸配置)
+     * 嚴格遵循標準爵士鼓五線譜線間座標 (staffStep)：
+     *  1=第一間(Kick), 3=第二間(Floor Tom), 5=第三間(Snare),
+     *  7=第四間(High Tom), 8=第四線(Mid Tom), 9=第五線(Ride),
+     *  10=第五線上方間(Hi-Hat Open/Close), 11=上加一線(Crash)
      * ============================================================================
      */
     const DRUM_PARTS = [
       { id: 'kick',     name: '大鼓 (Kick)',         short: 'KICK',   defaultNote: 36, key: 'b', keyLabel: 'B 鍵',  staffStep: 1,  headType: 'normal', color: '#f43f5e' },
       { id: 'snare',    name: '小鼓 (Snare)',        short: 'SNARE',  defaultNote: 38, key: 'f', keyLabel: 'F 鍵',  staffStep: 5,  headType: 'normal', color: '#38bdf8' },
-      { id: 'hihat',    name: '閉合踩鈸 (Hi-Hat)',   short: 'CHH',    defaultNote: 42, key: 'j', keyLabel: 'J 鍵',  staffStep: 9,  headType: 'x',      color: '#eab308' },
-      { id: 'openhh',   name: '開放踩鈸 (Open HH)',  short: 'OHH',    defaultNote: 46, key: 'k', keyLabel: 'K 鍵',  staffStep: 9,  headType: 'openx',  color: '#f97316' },
-      { id: 'ride',     name: '疊音鈸 (Ride)',       short: 'RIDE',   defaultNote: 51, key: 'u', keyLabel: 'U 鍵',  staffStep: 8,  headType: 'ride',   color: '#06b6d4' },
-      { id: 'crash',    name: '碎音鈸 (Crash)',      short: 'CRASH',  defaultNote: 49, key: 'r', keyLabel: 'R 鍵',  staffStep: 10, headType: 'crash',  color: '#10b981' },
+      { id: 'hihat',    name: '閉合踩鈸 (Hi-Hat)',   short: 'CHH',    defaultNote: 42, key: 'j', keyLabel: 'J 鍵',  staffStep: 10, headType: 'x',      color: '#eab308' },
+      { id: 'openhh',   name: '開放踩鈸 (Open HH)',  short: 'OHH',    defaultNote: 46, key: 'k', keyLabel: 'K 鍵',  staffStep: 10, headType: 'openx',  color: '#f97316' },
+      { id: 'ride',     name: '疊音鈸 (Ride)',       short: 'RIDE',   defaultNote: 51, key: 'u', keyLabel: 'U 鍵',  staffStep: 9,  headType: 'ride',   color: '#06b6d4' },
+      { id: 'crash',    name: '碎音鈸 (Crash)',      short: 'CRASH',  defaultNote: 49, key: 'r', keyLabel: 'R 鍵',  staffStep: 11, headType: 'crash',  color: '#10b981' },
       { id: 'hightom',  name: '高音桶鼓 (High Tom)', short: 'HI-TOM', defaultNote: 50, key: 't', keyLabel: 'T 鍵',  staffStep: 7,  headType: 'normal', color: '#a855f7' },
-      { id: 'midtom',   name: '中音桶鼓 (Mid Tom)',  short: 'MID-TOM',defaultNote: 48, key: 'g', keyLabel: 'G 鍵',  staffStep: 6,  headType: 'normal', color: '#8b5cf6' },
+      { id: 'midtom',   name: '中音桶鼓 (Mid Tom)',  short: 'MID-TOM',defaultNote: 48, key: 'g', keyLabel: 'G 鍵',  staffStep: 8,  headType: 'normal', color: '#8b5cf6' },
       { id: 'floortom', name: '落地鼓 (Floor Tom)',  short: 'FL-TOM', defaultNote: 45, key: 'h', keyLabel: 'H 鍵',  staffStep: 3,  headType: 'normal', color: '#ec4899' }
     ];
 
@@ -1989,8 +1993,9 @@
       const basePixelsPerBeat = Math.max(95, Math.min(145, width / 6.5));
       const pixelsPerBeat = basePixelsPerBeat * sheetZoomScale;
 
-      // 輔助函式：將 staffStep 轉換為畫布 Y 座標 (0 = 第一線下方間, 2 = 第一線, 10 = 第五線上方)
-      const stepToY = (step) => topLineY + (10 - step) * (lineSpacing / 2);
+      // 輔助函式：標準爵士鼓五線譜線間座標換算
+      // step = 9 為第五線 (topLineY), step = 10 為第五線上方間, step = 11 為上加一線
+      const stepToY = (step) => topLineY + (9 - step) * (lineSpacing / 2);
 
       // 1. 繪製五條標準五線譜水平線
       ctx.strokeStyle = '#94a3b8';
@@ -2250,10 +2255,10 @@
                 ctx.restore();
               }
 
-              // 上加一線 / 上加二線短輔助線 (Ledger Line)
-              if (part.staffStep >= 10) {
-                ctx.strokeStyle = '#64748b';
-                ctx.lineWidth = 1.4;
+              // 上加一線短輔助線 (Ledger Line)：僅針對上加一線的 Crash (staffStep === 11) 畫出穿過音符的短橫線
+              if (part.staffStep >= 11) {
+                ctx.strokeStyle = '#334155';
+                ctx.lineWidth = 1.6;
                 ctx.beginPath();
                 ctx.moveTo(slot.x - 11, y);
                 ctx.lineTo(slot.x + 11, y);
